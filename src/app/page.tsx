@@ -16,6 +16,7 @@ import AccountSettingsModal from "@/components/AccountSettingsModal";
 // ローカルストレージのキー
 const ATTENDANCE_STORAGE_KEY = "gyomussss_attendance";
 const USER_STORAGE_KEY = "gyomussss_user";
+const PROJECTS_STORAGE_KEY = "gyomussss_projects";
 
 // User型をローカルで定義
 type User = {
@@ -58,8 +59,12 @@ export default function Home() {
   // AIから追加されるタスク
   const [pendingAITask, setPendingAITask] = useState<AITaskData | null>(null);
 
-  // プロジェクトデータをサーバーに保存
+  // プロジェクトデータをサーバーとローカルストレージに保存
   const saveProjects = async (projectsToSave: Project[]) => {
+    // ローカルストレージに保存（バックアップ）
+    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projectsToSave));
+
+    // サーバーにも保存を試みる
     try {
       await fetch("/api/data", {
         method: "POST",
@@ -67,7 +72,7 @@ export default function Home() {
         body: JSON.stringify({ type: "projects", data: projectsToSave }),
       });
     } catch (error) {
-      console.error("Failed to save projects:", error);
+      console.error("Failed to save projects to server:", error);
     }
   };
 
@@ -92,19 +97,42 @@ export default function Home() {
         }
       }
 
-      // プロジェクトデータをサーバーから取得
+      // プロジェクトデータを取得（サーバー優先、なければローカルストレージ）
+      let loadedProjects: Project[] = [];
       try {
         const res = await fetch("/api/data?type=projects");
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          setProjects(data);
-        } else {
-          setProjects([]);
+          loadedProjects = data;
         }
       } catch (error) {
-        console.error("Failed to load projects:", error);
-        setProjects([]);
+        console.error("Failed to load projects from server:", error);
       }
+
+      // サーバーにデータがない場合、ローカルストレージから復元
+      if (loadedProjects.length === 0) {
+        const savedProjects = localStorage.getItem(PROJECTS_STORAGE_KEY);
+        if (savedProjects) {
+          try {
+            loadedProjects = JSON.parse(savedProjects);
+            // サーバーに同期
+            if (loadedProjects.length > 0) {
+              fetch("/api/data", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ type: "projects", data: loadedProjects }),
+              }).catch(console.error);
+            }
+          } catch {
+            console.error("Failed to parse local projects");
+          }
+        }
+      } else {
+        // サーバーデータをローカルにも保存
+        localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(loadedProjects));
+      }
+
+      setProjects(loadedProjects);
 
       setIsLoading(false);
     };
@@ -191,6 +219,7 @@ export default function Home() {
     const newProject: Project = {
       id: `p${Date.now()}`,
       ...projectData,
+      creatorId: currentUser?.id, // 作成者IDを設定
     };
     const updatedProjects = [...projects, newProject];
     setProjects(updatedProjects);
