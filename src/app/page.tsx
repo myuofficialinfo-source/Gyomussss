@@ -101,62 +101,77 @@ export default function Home() {
   // 初期化：ユーザー情報とプロジェクトデータを取得
   useEffect(() => {
     const init = async () => {
-      // ユーザー情報をローカルストレージから取得
-      const savedUser = localStorage.getItem(USER_STORAGE_KEY);
-      if (savedUser) {
-        const user = JSON.parse(savedUser) as User;
-        setCurrentUser(user);
-        setUserMood(user.mood);
-      }
-
-      // 勤怠情報をチェック
-      const savedAttendance = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
-      const today = new Date().toISOString().split("T")[0];
-      if (savedAttendance) {
-        const attendance = JSON.parse(savedAttendance) as AttendanceRecord;
-        if (attendance.date === today) {
-          setTodayAttendance(attendance);
-        }
-      }
-
-      // プロジェクトデータを取得（サーバー優先、なければローカルストレージ）
-      let loadedProjects: Project[] = [];
       try {
-        const res = await fetch("/api/data?type=projects");
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          loadedProjects = data;
-        }
-      } catch (error) {
-        console.error("Failed to load projects from server:", error);
-      }
-
-      // サーバーにデータがない場合、ローカルストレージから復元
-      if (loadedProjects.length === 0) {
-        const savedProjects = localStorage.getItem(PROJECTS_STORAGE_KEY);
-        if (savedProjects) {
+        // ユーザー情報をローカルストレージから取得
+        const savedUser = localStorage.getItem(USER_STORAGE_KEY);
+        if (savedUser) {
           try {
-            loadedProjects = JSON.parse(savedProjects);
-            // サーバーに同期
-            if (loadedProjects.length > 0) {
-              fetch("/api/data", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ type: "projects", data: loadedProjects }),
-              }).catch(console.error);
-            }
+            const user = JSON.parse(savedUser) as User;
+            setCurrentUser(user);
+            setUserMood(user.mood);
           } catch {
-            console.error("Failed to parse local projects");
+            console.error("Failed to parse user data");
           }
         }
-      } else {
-        // サーバーデータをローカルにも保存
-        localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(loadedProjects));
+
+        // 勤怠情報をチェック
+        const savedAttendance = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
+        const today = new Date().toISOString().split("T")[0];
+        if (savedAttendance) {
+          try {
+            const attendance = JSON.parse(savedAttendance) as AttendanceRecord;
+            if (attendance.date === today) {
+              setTodayAttendance(attendance);
+            }
+          } catch {
+            console.error("Failed to parse attendance data");
+          }
+        }
+
+        // プロジェクトデータを取得（サーバー優先、なければローカルストレージ）
+        let loadedProjects: Project[] = [];
+        try {
+          const res = await fetch("/api/data?type=projects");
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data) && data.length > 0) {
+              loadedProjects = data;
+            }
+          }
+        } catch (error) {
+          console.error("Failed to load projects from server:", error);
+        }
+
+        // サーバーにデータがない場合、ローカルストレージから復元
+        if (loadedProjects.length === 0) {
+          const savedProjects = localStorage.getItem(PROJECTS_STORAGE_KEY);
+          if (savedProjects) {
+            try {
+              loadedProjects = JSON.parse(savedProjects);
+              // サーバーに同期（バックグラウンドで）
+              if (loadedProjects.length > 0) {
+                fetch("/api/data", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ type: "projects", data: loadedProjects }),
+                }).catch(console.error);
+              }
+            } catch {
+              console.error("Failed to parse local projects");
+            }
+          }
+        } else {
+          // サーバーデータをローカルにも保存
+          localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(loadedProjects));
+        }
+
+        setProjects(loadedProjects);
+      } catch (error) {
+        console.error("Init error:", error);
+      } finally {
+        // 必ずローディング終了
+        setIsLoading(false);
       }
-
-      setProjects(loadedProjects);
-
-      setIsLoading(false);
     };
 
     init();
