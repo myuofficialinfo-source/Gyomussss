@@ -1,57 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 
-// ダミーのユーザーデータ（検索用）
-const dummyUsers = [
-  { id: "u1", name: "大原正（Tadashi Ohara）", company: "DANK HEARTS", avatar: "大" },
-  { id: "u2", name: "中原", company: "", avatar: "中" },
-  { id: "u3", name: "鵜川耕次（Koji Ugawa）", company: "DANK HEARTS", avatar: "鵜" },
-  { id: "u4", name: "横井大幸（Hiroyuki Yokoi）@DH", company: "DANK HEARTS", avatar: "横" },
-  { id: "u5", name: "尾崎将之(Masayuki Ozaki) H!P", company: "DANK HEARTS", avatar: "尾" },
-  { id: "u6", name: "森岡大遊※", company: "DANK HEARTS", avatar: "森" },
-  { id: "u7", name: "田中太郎", company: "株式会社ゲームスタジオ", avatar: "田" },
-  { id: "u8", name: "佐藤花子", company: "株式会社ゲームスタジオ", avatar: "佐" },
-];
+type SearchUser = {
+  id: string;
+  name: string;
+  avatar: string;
+  provider: string;
+};
 
-// ダミーのフレンドリスト（既存のDM相手）
-const existingFriends = [
-  { id: "dm1", name: "田中太郎", avatar: "田", status: "online" as const },
-  { id: "dm2", name: "佐藤花子", avatar: "佐", status: "busy" as const },
-  { id: "dm3", name: "山田一郎", avatar: "山", status: "offline" as const },
-  { id: "dm4", name: "鈴木次郎", avatar: "鈴", status: "online" as const },
-];
+type FriendRequest = {
+  id: string;
+  fromUserId: string;
+  toUserId: string;
+  status: string;
+  fromUser?: {
+    id: string;
+    name: string;
+    avatar: string;
+  };
+};
 
-// ダミーのグループリスト（メンバー情報付き）
-const existingGroups = [
-  {
-    id: "g1",
-    name: "【ノイズ】PPMD",
-    icon: "🎮",
-    members: [
-      { id: "gm1", name: "大原正（Tadashi Ohara）", avatar: "大", company: "DANK HEARTS" },
-      { id: "gm2", name: "中原", avatar: "中", company: "" },
-      { id: "gm3", name: "鵜川耕次（Koji Ugawa）", avatar: "鵜", company: "DANK HEARTS" },
-    ]
-  },
-  {
-    id: "g2",
-    name: "【ノイズ】勤務報告",
-    icon: "📋",
-    members: [
-      { id: "gm4", name: "横井大幸（Hiroyuki Yokoi）@DH", avatar: "横", company: "DANK HEARTS" },
-      { id: "gm5", name: "尾崎将之(Masayuki Ozaki) H!P", avatar: "尾", company: "DANK HEARTS" },
-    ]
-  },
-  {
-    id: "g3",
-    name: "【ベリー】DH_グラフィック",
-    icon: "🎨",
-    members: [
-      { id: "gm6", name: "森岡大遊※", avatar: "森", company: "DANK HEARTS" },
-    ]
-  },
-];
+type Friend = {
+  id: string;
+  name: string;
+  avatar: string;
+  provider: string;
+};
 
 type MemberRole = "admin" | "member" | "readonly";
 
@@ -64,14 +39,19 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (project: { name: string; icon: string; type: "dm" | "group"; members?: SelectedMember[] }) => void;
+  currentUserId: string;
 };
 
-export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props) {
-  const [activeTab, setActiveTab] = useState<"dm" | "group">("group");
+export default function CreateProjectModal({ isOpen, onClose, onCreate, currentUserId }: Props) {
+  const [activeTab, setActiveTab] = useState<"dm" | "group">("dm");
 
   // DM用のstate
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchUser[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [pendingRequests, setPendingRequests] = useState<string[]>([]);
+  const [incomingRequests, setIncomingRequests] = useState<FriendRequest[]>([]);
+  const [friends, setFriends] = useState<Friend[]>([]);
 
   // グループ用のstate
   const [groupName, setGroupName] = useState("");
@@ -79,32 +59,150 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props)
   const [groupDescription, setGroupDescription] = useState("");
   const [selectedMembers, setSelectedMembers] = useState<SelectedMember[]>([]);
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
-  const [memberSourceTab, setMemberSourceTab] = useState<"dm" | "group">("dm");
   const [requireApproval, setRequireApproval] = useState(true);
-  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [openRoleDropdown, setOpenRoleDropdown] = useState<string | null>(null);
 
   // 招待リンク生成用
-  const inviteLink = `https://www.gyomussss.com/g/${Math.random().toString(36).substring(2, 14)}`;
+  const inviteLink = `https://gyomussss.vercel.app/invite/${Math.random().toString(36).substring(2, 14)}`;
+
+  // フレンド一覧とリクエストを取得
+  const fetchFriendsAndRequests = useCallback(async () => {
+    if (!currentUserId) return;
+
+    try {
+      // フレンド一覧
+      const friendsRes = await fetch(`/api/friends?userId=${currentUserId}&type=friends`);
+      const friendsData = await friendsRes.json();
+      if (friendsData.friends) {
+        setFriends(friendsData.friends);
+      }
+
+      // 受信したリクエスト
+      const requestsRes = await fetch(`/api/friends?userId=${currentUserId}&type=requests`);
+      const requestsData = await requestsRes.json();
+      if (requestsData.requests) {
+        setIncomingRequests(requestsData.requests);
+      }
+
+      // 送信済みリクエスト
+      const pendingRes = await fetch(`/api/friends?userId=${currentUserId}&type=pending`);
+      const pendingData = await pendingRes.json();
+      if (pendingData.requests) {
+        setPendingRequests(pendingData.requests.map((r: FriendRequest) => r.toUserId));
+      }
+    } catch (error) {
+      console.error("Failed to fetch friends:", error);
+    }
+  }, [currentUserId]);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchFriendsAndRequests();
+    }
+  }, [isOpen, fetchFriendsAndRequests]);
+
+  // ユーザー検索
+  useEffect(() => {
+    const searchUsers = async () => {
+      if (!searchQuery.trim()) {
+        setSearchResults([]);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const res = await fetch(`/api/users?q=${encodeURIComponent(searchQuery)}`);
+        const data = await res.json();
+        if (data.users) {
+          // 自分自身と既にフレンドの人を除外
+          const filtered = data.users.filter((u: SearchUser) =>
+            u.id !== currentUserId &&
+            !friends.some(f => f.id === u.id)
+          );
+          setSearchResults(filtered);
+        }
+      } catch (error) {
+        console.error("Search error:", error);
+      }
+      setIsSearching(false);
+    };
+
+    const debounce = setTimeout(searchUsers, 300);
+    return () => clearTimeout(debounce);
+  }, [searchQuery, currentUserId, friends]);
 
   if (!isOpen) return null;
 
   const handleClose = () => {
-    setActiveTab("group");
+    setActiveTab("dm");
     setSearchQuery("");
-    setPendingRequests([]);
+    setSearchResults([]);
     setGroupName("");
     setGroupIcon("🎮");
     setGroupDescription("");
     setSelectedMembers([]);
     setMemberSearchQuery("");
-    setExpandedGroups([]);
     setOpenRoleDropdown(null);
     onClose();
   };
 
-  const handleSendFriendRequest = (userId: string) => {
-    setPendingRequests([...pendingRequests, userId]);
+  const handleSendFriendRequest = async (toUserId: string) => {
+    try {
+      const res = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "send",
+          fromUserId: currentUserId,
+          toUserId,
+        }),
+      });
+      const data = await res.json();
+      if (data.request) {
+        setPendingRequests([...pendingRequests, toUserId]);
+      }
+    } catch (error) {
+      console.error("Failed to send friend request:", error);
+    }
+  };
+
+  const handleAcceptRequest = async (requestId: string) => {
+    try {
+      const res = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "accept",
+          requestId,
+        }),
+      });
+      const data = await res.json();
+      if (data.request) {
+        // リストを更新
+        fetchFriendsAndRequests();
+      }
+    } catch (error) {
+      console.error("Failed to accept request:", error);
+    }
+  };
+
+  const handleRejectRequest = async (requestId: string) => {
+    try {
+      const res = await fetch("/api/friends", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reject",
+          requestId,
+        }),
+      });
+      const data = await res.json();
+      if (data.request) {
+        setIncomingRequests(incomingRequests.filter(r => r.id !== requestId));
+      }
+    } catch (error) {
+      console.error("Failed to reject request:", error);
+    }
   };
 
   const handleCreateGroup = () => {
@@ -142,55 +240,15 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props)
     setOpenRoleDropdown(null);
   };
 
-  const handleToggleGroupExpand = (groupId: string) => {
-    if (expandedGroups.includes(groupId)) {
-      setExpandedGroups(expandedGroups.filter(id => id !== groupId));
-    } else {
-      setExpandedGroups([...expandedGroups, groupId]);
-    }
-  };
-
-  const handleSelectAllGroupMembers = (_groupId: string, members: { id: string }[]) => {
-    const memberIds = members.map(m => m.id);
-    const allSelected = memberIds.every(id => isSelected(id));
-
-    if (allSelected) {
-      // 全部選択されていたら解除
-      setSelectedMembers(selectedMembers.filter(m => !memberIds.includes(m.id)));
-    } else {
-      // 未選択のメンバーを追加
-      const newMembers = memberIds
-        .filter(id => !isSelected(id))
-        .map(id => ({ id, role: "member" as MemberRole }));
-      setSelectedMembers([...selectedMembers, ...newMembers]);
-    }
-  };
-
   const handleCopyInviteLink = () => {
     navigator.clipboard.writeText(inviteLink);
   };
 
   const icons = ["🎮", "🎪", "🎬", "🎨", "🎵", "📱", "💻", "🌐", "🚀", "⚔️", "🏰", "🌲", "📋", "🔧", "📧", "📝"];
 
-  const filteredUsers = dummyUsers.filter(user =>
-    user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.company.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const filteredFriends = existingFriends.filter(friend =>
+  const filteredFriends = friends.filter(friend =>
     friend.name.toLowerCase().includes(memberSearchQuery.toLowerCase())
   );
-
-  const filteredGroups = existingGroups.filter(group =>
-    group.name.toLowerCase().includes(memberSearchQuery.toLowerCase()) ||
-    group.members.some(m => m.name.toLowerCase().includes(memberSearchQuery.toLowerCase()))
-  );
-
-  const statusColors = {
-    online: "bg-green-500",
-    busy: "bg-red-500",
-    offline: "bg-gray-400",
-  };
 
   const roleLabels = {
     admin: "管理者",
@@ -260,9 +318,13 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props)
               </div>
 
               {/* 検索結果 */}
-              <div className="space-y-2">
-                {searchQuery && filteredUsers.length > 0 ? (
-                  filteredUsers.map(user => (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {isSearching ? (
+                  <div className="text-center py-4">
+                    <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" />
+                  </div>
+                ) : searchQuery && searchResults.length > 0 ? (
+                  searchResults.map(user => (
                     <div
                       key={user.id}
                       className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg"
@@ -272,9 +334,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props)
                       </div>
                       <div className="flex-1">
                         <p className="text-sm font-medium text-slate-800">{user.name}</p>
-                        {user.company && (
-                          <p className="text-xs text-slate-500">{user.company}</p>
-                        )}
+                        <p className="text-xs text-slate-500">ID: {user.id.slice(0, 12)}...</p>
                       </div>
                       {pendingRequests.includes(user.id) ? (
                         <span className="text-xs text-slate-500 px-3 py-1 bg-slate-200 rounded">
@@ -306,10 +366,64 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props)
                 <h3 className="text-sm font-medium text-slate-700 mb-2">
                   フレンド申請（受信中）
                 </h3>
-                <p className="text-xs text-slate-500">
-                  現在、保留中のフレンド申請はありません
-                </p>
+                {incomingRequests.length > 0 ? (
+                  <div className="space-y-2">
+                    {incomingRequests.map(request => (
+                      <div
+                        key={request.id}
+                        className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg"
+                      >
+                        <div className="w-10 h-10 bg-blue-200 rounded-full flex items-center justify-center text-sm font-medium">
+                          {request.fromUser?.avatar || "?"}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-slate-800">
+                            {request.fromUser?.name || "Unknown"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleAcceptRequest(request.id)}
+                          className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                        >
+                          承認
+                        </button>
+                        <button
+                          onClick={() => handleRejectRequest(request.id)}
+                          className="px-3 py-1 text-sm bg-slate-300 text-slate-700 rounded hover:bg-slate-400 transition-colors"
+                        >
+                          拒否
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    現在、保留中のフレンド申請はありません
+                  </p>
+                )}
               </div>
+
+              {/* フレンド一覧 */}
+              {friends.length > 0 && (
+                <div className="border-t border-slate-200 pt-4">
+                  <h3 className="text-sm font-medium text-slate-700 mb-2">
+                    フレンド一覧（{friends.length}人）
+                  </h3>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {friends.map(friend => (
+                      <div
+                        key={friend.id}
+                        className="flex items-center gap-3 p-2 bg-slate-50 rounded"
+                      >
+                        <div className="w-8 h-8 bg-slate-300 rounded-full flex items-center justify-center text-xs font-medium">
+                          {friend.avatar}
+                        </div>
+                        <span className="text-sm text-slate-800">{friend.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             /* グループ作成UI */
@@ -358,30 +472,9 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props)
                 />
               </div>
 
-              {/* DM / グループ からメンバー選択 */}
+              {/* フレンドからメンバー選択 */}
               <div className="border-t border-slate-200 pt-4">
-                <div className="flex gap-4 mb-3">
-                  <button
-                    onClick={() => setMemberSourceTab("dm")}
-                    className={`text-sm pb-1 ${
-                      memberSourceTab === "dm"
-                        ? "font-medium text-slate-800 border-b-2 border-slate-800"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    DM
-                  </button>
-                  <button
-                    onClick={() => setMemberSourceTab("group")}
-                    className={`text-sm pb-1 ${
-                      memberSourceTab === "group"
-                        ? "font-medium text-slate-800 border-b-2 border-slate-800"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
-                  >
-                    グループ
-                  </button>
-                </div>
+                <h3 className="text-sm font-medium text-slate-700 mb-2">メンバーを追加</h3>
 
                 {/* 検索 */}
                 <div className="relative mb-3">
@@ -390,168 +483,70 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props)
                     type="text"
                     value={memberSearchQuery}
                     onChange={(e) => setMemberSearchQuery(e.target.value)}
-                    placeholder={memberSourceTab === "dm" ? "DMから検索" : "グループから検索"}
+                    placeholder="フレンドから検索"
                     className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   />
                 </div>
 
-                {/* メンバーリスト */}
+                {/* フレンドリスト */}
                 <div className="border border-slate-200 rounded max-h-56 overflow-y-auto">
-                  {memberSourceTab === "dm" ? (
-                    /* DMリスト */
-                    filteredFriends.length > 0 ? (
-                      filteredFriends.map(friend => (
-                        <div
-                          key={friend.id}
-                          className="flex items-center gap-3 p-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected(friend.id)}
-                            onChange={() => handleToggleMember(friend.id)}
-                            className="rounded"
-                          />
+                  {filteredFriends.length > 0 ? (
+                    filteredFriends.map(friend => (
+                      <div
+                        key={friend.id}
+                        className="flex items-center gap-3 p-2 hover:bg-slate-50 border-b border-slate-100 last:border-b-0"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected(friend.id)}
+                          onChange={() => handleToggleMember(friend.id)}
+                          className="rounded"
+                        />
+                        <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-xs">
+                          {friend.avatar}
+                        </div>
+                        <span className="text-sm text-slate-800 flex-1">{friend.name}</span>
+                        {isSelected(friend.id) && (
                           <div className="relative">
-                            <div className="w-8 h-8 bg-slate-200 rounded-full flex items-center justify-center text-xs">
-                              {friend.avatar}
-                            </div>
-                            <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white ${statusColors[friend.status]}`} />
-                          </div>
-                          <span className="text-sm text-slate-800 flex-1">{friend.name}</span>
-                          {isSelected(friend.id) && (
-                            <div className="relative">
-                              <button
-                                onClick={() => setOpenRoleDropdown(openRoleDropdown === friend.id ? null : friend.id)}
-                                className="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-100 flex items-center gap-1"
-                              >
-                                {roleLabels[getMemberRole(friend.id)]}
-                                <span className="text-[10px]">▼</span>
-                              </button>
-                              {openRoleDropdown === friend.id && (
-                                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded shadow-lg z-10 min-w-[90px]">
-                                  <button
-                                    onClick={() => handleSetRole(friend.id, "admin")}
-                                    className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(friend.id) === "admin" ? "bg-blue-50 text-blue-600" : ""}`}
-                                  >
-                                    管理者
-                                  </button>
-                                  <button
-                                    onClick={() => handleSetRole(friend.id, "member")}
-                                    className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(friend.id) === "member" ? "bg-blue-50 text-blue-600" : ""}`}
-                                  >
-                                    メンバー
-                                  </button>
-                                  <button
-                                    onClick={() => handleSetRole(friend.id, "readonly")}
-                                    className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(friend.id) === "readonly" ? "bg-blue-50 text-blue-600" : ""}`}
-                                  >
-                                    閲覧のみ
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center text-slate-500 text-sm">
-                        DMが見つかりません
-                      </div>
-                    )
-                  ) : (
-                    /* グループリスト（展開可能） */
-                    filteredGroups.length > 0 ? (
-                      filteredGroups.map(group => (
-                        <div key={group.id} className="border-b border-slate-100 last:border-b-0">
-                          {/* グループヘッダー */}
-                          <div className="flex items-center gap-3 p-2 hover:bg-slate-50">
-                            <input
-                              type="checkbox"
-                              checked={group.members.every(m => isSelected(m.id))}
-                              onChange={() => handleSelectAllGroupMembers(group.id, group.members)}
-                              className="rounded"
-                            />
                             <button
-                              onClick={() => handleToggleGroupExpand(group.id)}
-                              className="text-xs text-slate-400"
+                              onClick={() => setOpenRoleDropdown(openRoleDropdown === friend.id ? null : friend.id)}
+                              className="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-100 flex items-center gap-1"
                             >
-                              {expandedGroups.includes(group.id) ? "▼" : "▶"}
+                              {roleLabels[getMemberRole(friend.id)]}
+                              <span className="text-[10px]">▼</span>
                             </button>
-                            <div className="w-8 h-8 bg-green-100 rounded flex items-center justify-center text-sm">
-                              {group.icon}
-                            </div>
-                            <div className="flex-1">
-                              <span className="text-sm text-slate-800">{group.name}</span>
-                              <span className="text-xs text-slate-500 ml-2">{group.members.length}人</span>
-                            </div>
-                          </div>
-                          {/* グループメンバー（展開時） */}
-                          {expandedGroups.includes(group.id) && (
-                            <div className="bg-slate-50 pl-10">
-                              {group.members.map(member => (
-                                <div
-                                  key={member.id}
-                                  className="flex items-center gap-3 p-2 border-t border-slate-100"
+                            {openRoleDropdown === friend.id && (
+                              <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded shadow-lg z-10 min-w-[90px]">
+                                <button
+                                  onClick={() => handleSetRole(friend.id, "admin")}
+                                  className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(friend.id) === "admin" ? "bg-blue-50 text-blue-600" : ""}`}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected(member.id)}
-                                    onChange={() => handleToggleMember(member.id)}
-                                    className="rounded"
-                                  />
-                                  <div className="w-7 h-7 bg-slate-200 rounded-full flex items-center justify-center text-xs">
-                                    {member.avatar}
-                                  </div>
-                                  <div className="flex-1">
-                                    <span className="text-sm text-slate-800">{member.name}</span>
-                                    {member.company && (
-                                      <span className="text-xs text-slate-500 ml-2">{member.company}</span>
-                                    )}
-                                  </div>
-                                  {isSelected(member.id) && (
-                                    <div className="relative">
-                                      <button
-                                        onClick={() => setOpenRoleDropdown(openRoleDropdown === member.id ? null : member.id)}
-                                        className="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-100 flex items-center gap-1 bg-white"
-                                      >
-                                        {roleLabels[getMemberRole(member.id)]}
-                                        <span className="text-[10px]">▼</span>
-                                      </button>
-                                      {openRoleDropdown === member.id && (
-                                        <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded shadow-lg z-10 min-w-[90px]">
-                                          <button
-                                            onClick={() => handleSetRole(member.id, "admin")}
-                                            className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(member.id) === "admin" ? "bg-blue-50 text-blue-600" : ""}`}
-                                          >
-                                            管理者
-                                          </button>
-                                          <button
-                                            onClick={() => handleSetRole(member.id, "member")}
-                                            className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(member.id) === "member" ? "bg-blue-50 text-blue-600" : ""}`}
-                                          >
-                                            メンバー
-                                          </button>
-                                          <button
-                                            onClick={() => handleSetRole(member.id, "readonly")}
-                                            className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(member.id) === "readonly" ? "bg-blue-50 text-blue-600" : ""}`}
-                                          >
-                                            閲覧のみ
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    ) : (
-                      <div className="p-4 text-center text-slate-500 text-sm">
-                        グループが見つかりません
+                                  管理者
+                                </button>
+                                <button
+                                  onClick={() => handleSetRole(friend.id, "member")}
+                                  className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(friend.id) === "member" ? "bg-blue-50 text-blue-600" : ""}`}
+                                >
+                                  メンバー
+                                </button>
+                                <button
+                                  onClick={() => handleSetRole(friend.id, "readonly")}
+                                  className={`block w-full text-left px-3 py-2 text-sm hover:bg-slate-100 whitespace-nowrap ${getMemberRole(friend.id) === "readonly" ? "bg-blue-50 text-blue-600" : ""}`}
+                                >
+                                  閲覧のみ
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    )
+                    ))
+                  ) : (
+                    <div className="p-4 text-center text-slate-500 text-sm">
+                      {friends.length === 0
+                        ? "まずフレンドを追加してください"
+                        : "フレンドが見つかりません"}
+                    </div>
                   )}
                 </div>
               </div>
@@ -565,7 +560,6 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate }: Props)
                     className="rounded"
                   />
                   <span className="text-sm text-slate-600">招待リンク</span>
-                  <span className="text-slate-400 text-xs">❓</span>
                 </label>
                 <div className="flex gap-2">
                   <input

@@ -112,17 +112,30 @@ export default function Home() {
     init();
   }, []);
 
-  // ログイン処理
-  const handleLogin = (name: string) => {
-    const newUser: User = {
-      id: `user_${Date.now()}`,
-      name: name,
-      email: "",
-      avatar: name.charAt(0).toUpperCase(),
-      provider: "email",
-    };
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
-    setCurrentUser(newUser);
+  // ログイン処理（サーバーに登録）
+  const handleLogin = async (name: string) => {
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, provider: "email" }),
+      });
+      const data = await res.json();
+
+      if (data.user) {
+        const newUser: User = {
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email || "",
+          avatar: data.user.avatar,
+          provider: data.user.provider,
+        };
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+        setCurrentUser(newUser);
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+    }
   };
 
   // ログアウト処理
@@ -347,6 +360,7 @@ export default function Home() {
         isOpen={isCreateProjectOpen}
         onClose={() => setIsCreateProjectOpen(false)}
         onCreate={handleCreateProject}
+        currentUserId={userWithMood.id}
       />
 
       <CreateNewProjectModal
