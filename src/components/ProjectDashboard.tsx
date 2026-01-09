@@ -7,36 +7,16 @@ import GameDevTips from "./GameDevTips";
 // 最終イベント更新日時を保存するためのキー
 const EVENT_LAST_UPDATE_KEY = "gyomussss_event_last_update";
 
-// ダミーの最新チャットメッセージ
-const dummyLatestMessages = [
-  {
-    id: "lm1",
-    chatId: "g1",
-    chatName: "【ノイズ】PPMD",
-    userName: "松村優樹",
-    userAvatar: "松",
-    content: "ツミナビリリースして、いまでページビュー5,282です。",
-    timestamp: "9:15",
-  },
-  {
-    id: "lm2",
-    chatId: "g1",
-    chatName: "【ノイズ】PPMD",
-    userName: "杉山楓",
-    userAvatar: "杉",
-    content: "ありよりのあり\nタスク管理も紐づけたい",
-    timestamp: "昨日 17:45",
-  },
-  {
-    id: "lm3",
-    chatId: "dm1",
-    chatName: "田中太郎",
-    userName: "田中太郎",
-    userAvatar: "田",
-    content: "明日の件、確認お願いします",
-    timestamp: "1月8日 9:00",
-  },
-];
+// 最新チャットメッセージ（空）
+const dummyLatestMessages: {
+  id: string;
+  chatId: string;
+  chatName: string;
+  userName: string;
+  userAvatar: string;
+  content: string;
+  timestamp: string;
+}[] = [];
 
 // Gitアカウント用の型
 type GitAccount = {
@@ -46,13 +26,8 @@ type GitAccount = {
   avatar: string;
 };
 
-// ダミーのGitアカウント
-const gitAccounts: GitAccount[] = [
-  { id: "git1", name: "松村優樹", username: "y-matsumura", avatar: "松" },
-  { id: "git2", name: "杉山楓", username: "k-sugiyama", avatar: "杉" },
-  { id: "git3", name: "田中太郎", username: "t-tanaka", avatar: "田" },
-  { id: "git4", name: "佐藤花子", username: "h-sato", avatar: "佐" },
-];
+// Gitアカウント（空）
+const gitAccounts: GitAccount[] = [];
 
 // 変更履歴用の型
 type TaskHistory = {
@@ -129,63 +104,11 @@ type SpreadsheetLink = {
   url: string;
 };
 
-// ダミーのグループ
-const initialGroups: TaskGroup[] = [
-  { id: "g1", name: "エンジニア", color: "bg-blue-500", isExpanded: true },
-  { id: "g2", name: "デザイン", color: "bg-pink-500", isExpanded: true },
-];
+// グループ（空）
+const initialGroups: TaskGroup[] = [];
 
-// ダミーのガントタスク
-const initialGanttTasks: GanttTask[] = [
-  {
-    id: "t1",
-    title: "UI設計",
-    assignees: [{ gitAccountId: "git1", name: "松村優樹", avatar: "松" }],
-    startDate: "2026-01-06",
-    workDays: 3, // 1/6, 1/7, 1/8 (土日除く)
-    progress: 80,
-    color: "bg-blue-500",
-    groupId: "g1",
-    history: [],
-    status: "active",
-  },
-  {
-    id: "t2",
-    title: "API実装",
-    assignees: [{ gitAccountId: "git2", name: "杉山楓", avatar: "杉" }, { gitAccountId: "git3", name: "田中太郎", avatar: "田" }],
-    startDate: "2026-01-08",
-    workDays: 5,
-    progress: 30,
-    color: "bg-blue-500",
-    groupId: "g1",
-    history: [],
-    status: "active",
-  },
-  {
-    id: "t3",
-    title: "ロゴデザイン",
-    assignees: [{ gitAccountId: "git4", name: "佐藤花子", avatar: "佐" }],
-    startDate: "2026-01-06",
-    workDays: 2,
-    progress: 100,
-    color: "bg-pink-500",
-    groupId: "g2",
-    history: [],
-    status: "active",
-  },
-  {
-    id: "t4",
-    title: "UIデザイン",
-    assignees: [{ gitAccountId: "git4", name: "佐藤花子", avatar: "佐" }, { gitAccountId: "git1", name: "松村優樹", avatar: "松" }],
-    startDate: "2026-01-09",
-    workDays: 4,
-    progress: 50,
-    color: "bg-pink-500",
-    groupId: "g2",
-    history: [],
-    status: "active",
-  },
-];
+// ガントタスク（空）
+const initialGanttTasks: GanttTask[] = [];
 
 // AIから追加するタスクデータの型
 export type AITaskData = {

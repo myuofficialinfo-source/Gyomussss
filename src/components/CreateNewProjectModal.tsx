@@ -1,68 +1,96 @@
 "use client";
 
 import { useState } from "react";
-import type { Project, LinkedChat, ProjectMember, ProjectPermission } from "./Sidebar";
+import type { Project, LinkedChat, ProjectMember, ProjectPermission, GameSettings, GameTag, Platform } from "./Sidebar";
 
-// ダミーのグループリスト（各グループにメンバー情報を追加）
-const availableGroups = [
-  {
-    id: "g1",
-    name: "【ノイズ】PPMD",
-    icon: "🎮",
-    members: [
-      { id: "m1", name: "松村優樹", avatar: "松" },
-      { id: "m2", name: "杉山楓", avatar: "杉" },
-      { id: "m3", name: "田中太郎", avatar: "田" },
-    ],
-  },
-  {
-    id: "g2",
-    name: "【ノイズ】勤務報告",
-    icon: "📋",
-    members: [
-      { id: "m4", name: "佐藤花子", avatar: "佐" },
-      { id: "m5", name: "山田一郎", avatar: "山" },
-    ],
-  },
-  {
-    id: "g3",
-    name: "【ベリー】DH_グラフィック",
-    icon: "🎨",
-    members: [
-      { id: "m6", name: "鈴木次郎", avatar: "鈴" },
-      { id: "m7", name: "高橋美咲", avatar: "高" },
-      { id: "m8", name: "伊藤健太", avatar: "伊" },
-    ],
-  },
-  {
-    id: "g4",
-    name: "マイチャット",
-    icon: "📝",
-    members: [],
-  },
-  {
-    id: "g5",
-    name: "【ノイズ】Jenkins",
-    icon: "🔧",
-    members: [
-      { id: "m9", name: "渡辺隆", avatar: "渡" },
-      { id: "m10", name: "小林真理", avatar: "小" },
-    ],
-  },
-];
+// 空のグループリスト
+const availableGroups: {
+  id: string;
+  name: string;
+  icon: string;
+  members: { id: string; name: string; avatar: string }[];
+}[] = [];
 
-// ダミーのDMリスト
-const availableDMs = [
-  { id: "dm1", name: "田中太郎", avatar: "田", status: "online" as const },
-  { id: "dm2", name: "佐藤花子", avatar: "佐", status: "busy" as const },
-  { id: "dm3", name: "山田一郎", avatar: "山", status: "offline" as const },
-  { id: "dm4", name: "鈴木次郎", avatar: "鈴", status: "online" as const },
-];
+// 空のDMリスト
+const availableDMs: {
+  id: string;
+  name: string;
+  avatar: string;
+  status: "online" | "busy" | "offline";
+}[] = [];
 
 const roleLabels: Record<ProjectPermission, string> = {
   admin: "管理者",
   member: "メンバー",
 };
+
+// タグの表示名マッピング
+const tagLabels: Record<GameTag, string> = {
+  indie: "インディーゲーム",
+  action: "アクション",
+  rpg: "RPG",
+  puzzle: "パズル",
+  social: "ソーシャルゲーム",
+  console: "コンシューマーゲーム",
+  free: "フリーゲーム",
+  mobile: "モバイルゲーム",
+  vr: "VRゲーム",
+  simulation: "シミュレーション",
+  adventure: "アドベンチャー",
+  horror: "ホラー",
+};
+
+// プラットフォームの表示名マッピング
+const platformLabels: Record<Platform, string> = {
+  steam: "Steam",
+  switch: "Nintendo Switch",
+  ps5: "PlayStation 5",
+  ps4: "PlayStation 4",
+  xbox: "Xbox",
+  pc: "PC (その他)",
+  windows: "Windows",
+  mac: "macOS",
+  linux: "Linux",
+  ios: "iOS",
+  android: "Android",
+  web: "ブラウザ",
+};
+
+// プレイ時間の選択肢
+const playTimeOptions = [
+  "1時間未満",
+  "1-5時間",
+  "5-10時間",
+  "10-20時間",
+  "20-50時間",
+  "50-100時間",
+  "100時間以上",
+  "無限（エンドレス）",
+];
+
+// ジャンルの選択肢
+const genreOptions = [
+  "アクション",
+  "アドベンチャー",
+  "RPG",
+  "シミュレーション",
+  "パズル",
+  "シューティング",
+  "格闘",
+  "スポーツ",
+  "レース",
+  "音楽/リズム",
+  "ホラー",
+  "ビジュアルノベル",
+  "ローグライク",
+  "メトロイドヴァニア",
+  "サバイバル",
+  "クラフト",
+  "タワーディフェンス",
+  "カードゲーム",
+  "ボードゲーム",
+  "その他",
+];
 
 type Props = {
   isOpen: boolean;
@@ -71,12 +99,17 @@ type Props = {
 };
 
 export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Props) {
-  const [activeTab, setActiveTab] = useState<"general" | "members">("general");
+  const [activeTab, setActiveTab] = useState<"basic" | "roles">("basic");
 
-  // 基本設定
+  // 基本設定（ゲーム情報）
   const [name, setName] = useState("");
-  const [icon, setIcon] = useState("📊");
-  const [description, setDescription] = useState("");
+  const [icon, setIcon] = useState("🎮");
+  const [gameDescription, setGameDescription] = useState("");
+  const [platforms, setPlatforms] = useState<Platform[]>([]);
+  const [playTime, setPlayTime] = useState("");
+  const [genre, setGenre] = useState("");
+  const [releaseDate, setReleaseDate] = useState("");
+  const [tags, setTags] = useState<GameTag[]>([]);
 
   // メンバー設定
   const [selectedChats, setSelectedChats] = useState<LinkedChat[]>([]);
@@ -86,7 +119,7 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [openRoleDropdown, setOpenRoleDropdown] = useState<string | null>(null);
 
-  const icons = ["📊", "🎮", "🎬", "🎨", "🚀", "💼", "📱", "🌐", "🔧", "📋", "🎯", "💡", "🏢", "📈", "🛠️", "⚡"];
+  const icons = ["🎮", "🎬", "🎨", "🚀", "💼", "📱", "🌐", "🔧", "📋", "🎯", "💡", "🏢", "📈", "🛠️", "⚡", "🎪"];
 
   const statusColors = {
     online: "bg-green-500",
@@ -98,12 +131,17 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
 
   const handleClose = () => {
     setName("");
-    setIcon("📊");
-    setDescription("");
+    setIcon("🎮");
+    setGameDescription("");
+    setPlatforms([]);
+    setPlayTime("");
+    setGenre("");
+    setReleaseDate("");
+    setTags([]);
     setSelectedChats([]);
     setSelectedMembers([]);
     setSearchQuery("");
-    setActiveTab("general");
+    setActiveTab("basic");
     setExpandedGroups([]);
     setOpenRoleDropdown(null);
     onClose();
@@ -111,14 +149,44 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
 
   const handleCreate = () => {
     if (!name.trim()) return;
+
+    // GameSettingsを作成
+    const gameSettings: GameSettings = {
+      title: name.trim(),
+      description: gameDescription.trim(),
+      platforms,
+      playTime,
+      genre,
+      releaseDate,
+      tags,
+      memberRoles: [],
+    };
+
     onCreate({
       name: name.trim(),
       icon,
-      description: description.trim(),
+      description: gameDescription.trim(),
       linkedChats: selectedChats,
       projectMembers: selectedMembers,
+      gameSettings,
     });
     handleClose();
+  };
+
+  const togglePlatform = (platform: Platform) => {
+    if (platforms.includes(platform)) {
+      setPlatforms(platforms.filter(p => p !== platform));
+    } else {
+      setPlatforms([...platforms, platform]);
+    }
+  };
+
+  const toggleTag = (tag: GameTag) => {
+    if (tags.includes(tag)) {
+      setTags(tags.filter(t => t !== tag));
+    } else {
+      setTags([...tags, tag]);
+    }
   };
 
   // メンバーが既に追加されているかチェック
@@ -228,44 +296,47 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl w-full max-w-3xl overflow-hidden shadow-xl">
+      <div className="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-800">新規プロジェクト作成</h2>
+        <div className="flex items-center justify-between p-4 border-b border-slate-200 shrink-0">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-800">プロジェクト設定</h2>
+            <p className="text-sm text-slate-500">プロジェクトの詳細情報と体制を設定</p>
+          </div>
           <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 text-xl">
             ×
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-slate-200">
+        <div className="flex border-b border-slate-200 shrink-0">
           <button
-            onClick={() => setActiveTab("general")}
-            className={`px-6 py-3 text-sm font-medium transition-colors ${
-              activeTab === "general"
-                ? "text-blue-600 border-b-2 border-blue-600"
+            onClick={() => setActiveTab("basic")}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === "basic"
+                ? "text-purple-600 border-b-2 border-purple-600"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            基本設定
+            基本情報
           </button>
           <button
-            onClick={() => setActiveTab("members")}
-            className={`px-6 py-3 text-sm font-medium transition-colors ${
-              activeTab === "members"
-                ? "text-blue-600 border-b-2 border-blue-600"
+            onClick={() => setActiveTab("roles")}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === "roles"
+                ? "text-purple-600 border-b-2 border-purple-600"
                 : "text-slate-500 hover:text-slate-700"
             }`}
           >
-            メンバー管理
+            役職・体制
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-4">
-          {activeTab === "general" && (
-            <div className="space-y-4">
-              {/* アイコンと名前 */}
+        <div className="p-4 overflow-y-auto flex-1">
+          {activeTab === "basic" ? (
+            <div className="space-y-5">
+              {/* アイコンとゲームタイトル */}
               <div className="flex gap-4">
                 <div className="relative">
                   <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center text-3xl">
@@ -273,15 +344,13 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
                   </div>
                 </div>
                 <div className="flex-1">
-                  <label className="flex items-center gap-1 text-sm text-slate-600 mb-1">
-                    プロジェクト名：
-                  </label>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">ゲームタイトル</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="プロジェクト名を入力"
-                    className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="ゲームのタイトル"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
                   />
                 </div>
               </div>
@@ -306,23 +375,106 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
                 </div>
               </div>
 
-              {/* 概要 */}
+              {/* ゲーム内容 */}
               <div>
-                <label className="flex items-center gap-1 text-sm text-slate-600 mb-1">
-                  概要：
-                </label>
+                <label className="text-sm font-medium text-slate-700 mb-1 block">ゲーム内容</label>
                 <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="プロジェクトの説明やメモを記入できます"
-                  rows={4}
-                  className="w-full px-3 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm"
+                  value={gameDescription}
+                  onChange={(e) => setGameDescription(e.target.value)}
+                  placeholder="ゲームの説明・概要"
+                  rows={3}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm resize-none"
                 />
               </div>
-            </div>
-          )}
 
-          {activeTab === "members" && (
+              {/* リリースプラットフォーム */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 mb-2 block">リリースプラットフォーム</label>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(platformLabels) as Platform[]).map(platform => (
+                    <button
+                      key={platform}
+                      onClick={() => togglePlatform(platform)}
+                      className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+                        platforms.includes(platform)
+                          ? "bg-purple-500 text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {platformLabels[platform]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* プレイ時間とジャンル */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">プレイ時間</label>
+                  <select
+                    value={playTime}
+                    onChange={(e) => setPlayTime(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm bg-white"
+                  >
+                    <option value="">選択してください</option>
+                    {playTimeOptions.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-slate-700 mb-1 block">メインジャンル</label>
+                  <select
+                    value={genre}
+                    onChange={(e) => setGenre(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm bg-white"
+                  >
+                    <option value="">選択してください</option>
+                    {genreOptions.map(option => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* リリース予定日 */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 mb-1 block">リリース予定日</label>
+                <input
+                  type="date"
+                  value={releaseDate}
+                  onChange={(e) => setReleaseDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                />
+              </div>
+
+              {/* タグ */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 mb-2 block">
+                  タグ
+                  <span className="text-slate-400 font-normal ml-2">（イベント自動取得に使用）</span>
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(tagLabels) as GameTag[]).map(tag => (
+                    <button
+                      key={tag}
+                      onClick={() => toggleTag(tag)}
+                      className={`px-3 py-1.5 rounded-full text-sm transition-colors ${
+                        tags.includes(tag)
+                          ? "bg-green-500 text-white"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      }`}
+                    >
+                      {tagLabels[tag]}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mt-2">
+                  選択したタグに基づいて、関連するゲームイベント（展示会・即売会など）がカレンダーに自動表示されます
+                </p>
+              </div>
+            </div>
+          ) : (
             <div className="space-y-4">
               {/* 現在のメンバー一覧 */}
               <div>
@@ -385,7 +537,10 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
                       </div>
                     ))
                   ) : (
-                    <div className="p-4 text-center text-slate-400 text-sm">メンバーがいません</div>
+                    <div className="p-4 text-center text-slate-400 text-sm">
+                      メンバーがいません
+                      <p className="text-xs mt-1">まずフレンドを追加してください</p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -426,7 +581,7 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder={memberSourceTab === "dm" ? "DMから検索" : "グループから検索"}
-                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
                   />
                 </div>
 
@@ -500,7 +655,10 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
                         );
                       })
                     ) : (
-                      <div className="p-4 text-center text-slate-500 text-sm">DMが見つかりません</div>
+                      <div className="p-4 text-center text-slate-500 text-sm">
+                        DMがありません
+                        <p className="text-xs mt-1">先にフレンドを追加してください</p>
+                      </div>
                     )
                   ) : filteredGroups.length > 0 ? (
                     filteredGroups.map((group) => (
@@ -609,7 +767,7 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
                     ))
                   ) : (
                     <div className="p-4 text-center text-slate-500 text-sm">
-                      グループが見つかりません
+                      グループがありません
                     </div>
                   )}
                 </div>
@@ -619,19 +777,19 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 p-4 border-t border-slate-200 bg-slate-50">
+        <div className="flex justify-end gap-2 p-4 border-t border-slate-200 bg-slate-50 shrink-0">
           <button
             onClick={handleClose}
-            className="px-6 py-2 text-slate-600 hover:bg-slate-100 rounded transition-colors"
+            className="px-6 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
           >
             キャンセル
           </button>
           <button
             onClick={handleCreate}
             disabled={!name.trim()}
-            className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            作成
+            保存
           </button>
         </div>
       </div>
