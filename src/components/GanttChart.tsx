@@ -26,74 +26,11 @@ export type GitCommit = {
   branch: string;
 };
 
-// ダミーのガントタスク
-const dummyTasks: GanttTask[] = [
-  {
-    id: "t1",
-    title: "UI設計",
-    assignee: "松村優樹",
-    assigneeAvatar: "松",
-    startDate: "2026-01-06",
-    endDate: "2026-01-10",
-    progress: 80,
-    color: "bg-blue-500",
-    source: "manual",
-  },
-  {
-    id: "t2",
-    title: "API実装",
-    assignee: "杉山楓",
-    assigneeAvatar: "杉",
-    startDate: "2026-01-08",
-    endDate: "2026-01-15",
-    progress: 30,
-    color: "bg-green-500",
-    source: "chat",
-    sourceDetail: "【ノイズ】PPMD",
-  },
-  {
-    id: "t3",
-    title: "テスト作成",
-    assignee: "田中太郎",
-    assigneeAvatar: "田",
-    startDate: "2026-01-13",
-    endDate: "2026-01-17",
-    progress: 0,
-    color: "bg-purple-500",
-    source: "manual",
-  },
-];
+// ガントタスク（空）
+const dummyTasks: GanttTask[] = [];
 
-// ダミーのGitコミット
-const dummyCommits: GitCommit[] = [
-  {
-    id: "c1",
-    hash: "a1b2c3d",
-    message: "feat: ログイン機能を追加",
-    author: "松村優樹",
-    authorAvatar: "松",
-    date: "2026-01-08 14:30",
-    branch: "feature/login",
-  },
-  {
-    id: "c2",
-    hash: "e4f5g6h",
-    message: "fix: バリデーションエラーを修正",
-    author: "杉山楓",
-    authorAvatar: "杉",
-    date: "2026-01-08 11:20",
-    branch: "develop",
-  },
-  {
-    id: "c3",
-    hash: "i7j8k9l",
-    message: "docs: READMEを更新",
-    author: "田中太郎",
-    authorAvatar: "田",
-    date: "2026-01-07 18:45",
-    branch: "main",
-  },
-];
+// Gitコミット（空）
+const dummyCommits: GitCommit[] = [];
 
 type Props = {
   project: Project;

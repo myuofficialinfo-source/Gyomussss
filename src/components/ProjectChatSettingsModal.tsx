@@ -3,67 +3,21 @@
 import { useState, useEffect } from "react";
 import type { LinkedChat, ProjectMember, ProjectPermission } from "./Sidebar";
 
-// ダミーのグループリスト（各グループにメンバー情報を追加）
-const availableGroups = [
-  {
-    id: "g1",
-    name: "【ノイズ】PPMD",
-    icon: "🎮",
-    members: [
-      { id: "m1", name: "松村優樹", avatar: "松" },
-      { id: "m2", name: "杉山楓", avatar: "杉" },
-      { id: "m3", name: "田中太郎", avatar: "田" },
-    ],
-  },
-  {
-    id: "g2",
-    name: "【ノイズ】勤務報告",
-    icon: "📋",
-    members: [
-      { id: "m4", name: "佐藤花子", avatar: "佐" },
-      { id: "m5", name: "山田一郎", avatar: "山" },
-    ],
-  },
-  {
-    id: "g3",
-    name: "【ベリー】DH_グラフィック",
-    icon: "🎨",
-    members: [
-      { id: "m6", name: "鈴木次郎", avatar: "鈴" },
-      { id: "m7", name: "高橋美咲", avatar: "高" },
-      { id: "m8", name: "伊藤健太", avatar: "伊" },
-    ],
-  },
-  {
-    id: "g4",
-    name: "マイチャット",
-    icon: "📝",
-    members: [],
-  },
-  {
-    id: "g5",
-    name: "【ノイズ】Jenkins",
-    icon: "🔧",
-    members: [
-      { id: "m9", name: "渡辺隆", avatar: "渡" },
-      { id: "m10", name: "小林真理", avatar: "小" },
-    ],
-  },
-  {
-    id: "g6",
-    name: "steam メール転送",
-    icon: "📧",
-    members: [],
-  },
-];
+// グループリスト（空）
+const availableGroups: {
+  id: string;
+  name: string;
+  icon: string;
+  members: { id: string; name: string; avatar: string }[];
+}[] = [];
 
-// ダミーのDMリスト
-const availableDMs = [
-  { id: "dm1", name: "田中太郎", avatar: "田", status: "online" as const },
-  { id: "dm2", name: "佐藤花子", avatar: "佐", status: "busy" as const },
-  { id: "dm3", name: "山田一郎", avatar: "山", status: "offline" as const },
-  { id: "dm4", name: "鈴木次郎", avatar: "鈴", status: "online" as const },
-];
+// DMリスト（空）
+const availableDMs: {
+  id: string;
+  name: string;
+  avatar: string;
+  status: "online" | "busy" | "offline";
+}[] = [];
 
 const roleLabels: Record<ProjectPermission, string> = {
   admin: "管理者",

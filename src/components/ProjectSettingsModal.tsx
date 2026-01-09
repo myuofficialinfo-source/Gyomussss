@@ -2,51 +2,29 @@
 
 import { useState, useEffect } from "react";
 
-// ダミーのフレンドリスト（既存のDM相手）
-const existingFriends = [
-  { id: "dm1", name: "田中太郎", avatar: "田", status: "online" as const },
-  { id: "dm2", name: "佐藤花子", avatar: "佐", status: "busy" as const },
-  { id: "dm3", name: "山田一郎", avatar: "山", status: "offline" as const },
-  { id: "dm4", name: "鈴木次郎", avatar: "鈴", status: "online" as const },
-];
+// フレンドリスト（空）
+const existingFriends: {
+  id: string;
+  name: string;
+  avatar: string;
+  status: "online" | "busy" | "offline";
+}[] = [];
 
-// ダミーのグループリスト（メンバー情報付き）
-const existingGroups = [
-  {
-    id: "g1",
-    name: "【ノイズ】PPMD",
-    icon: "🎮",
-    members: [
-      { id: "gm1", name: "大原正（Tadashi Ohara）", avatar: "大", company: "DANK HEARTS" },
-      { id: "gm2", name: "中原", avatar: "中", company: "" },
-      { id: "gm3", name: "鵜川耕次（Koji Ugawa）", avatar: "鵜", company: "DANK HEARTS" },
-    ]
-  },
-  {
-    id: "g2",
-    name: "【ノイズ】勤務報告",
-    icon: "📋",
-    members: [
-      { id: "gm4", name: "横井大幸（Hiroyuki Yokoi）@DH", avatar: "横", company: "DANK HEARTS" },
-      { id: "gm5", name: "尾崎将之(Masayuki Ozaki) H!P", avatar: "尾", company: "DANK HEARTS" },
-    ]
-  },
-  {
-    id: "g3",
-    name: "【ベリー】DH_グラフィック",
-    icon: "🎨",
-    members: [
-      { id: "gm6", name: "森岡大遊※", avatar: "森", company: "DANK HEARTS" },
-    ]
-  },
-];
+// グループリスト（空）
+const existingGroups: {
+  id: string;
+  name: string;
+  icon: string;
+  members: { id: string; name: string; avatar: string; company: string }[];
+}[] = [];
 
-// 現在のグループメンバー（ダミー）
-const currentGroupMembers = [
-  { id: "1", name: "松村優樹", avatar: "松", role: "admin" as const },
-  { id: "2", name: "杉山楓", avatar: "杉", role: "member" as const },
-  { id: "3", name: "山田一郎", avatar: "山", role: "member" as const },
-];
+// 現在のグループメンバー（空）
+const currentGroupMembers: {
+  id: string;
+  name: string;
+  avatar: string;
+  role: "admin" | "member" | "readonly";
+}[] = [];
 
 type MemberRole = "admin" | "member" | "readonly";
 
