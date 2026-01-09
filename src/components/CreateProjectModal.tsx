@@ -41,9 +41,10 @@ type Props = {
   onClose: () => void;
   onCreate: (project: { name: string; icon: string; type: "dm" | "group"; members?: SelectedMember[] }) => void;
   currentUserId: string;
+  onStartDM?: (friendId: string, friendName: string) => void;
 };
 
-export default function CreateProjectModal({ isOpen, onClose, onCreate, currentUserId }: Props) {
+export default function CreateProjectModal({ isOpen, onClose, onCreate, currentUserId, onStartDM }: Props) {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<"dm" | "group">("dm");
 
@@ -460,7 +461,18 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, currentU
                         <div className="w-8 h-8 bg-slate-300 rounded-full flex items-center justify-center text-xs font-medium">
                           {friend.avatar}
                         </div>
-                        <span className="text-sm text-slate-800">{friend.name}</span>
+                        <span className="text-sm text-slate-800 flex-1">{friend.name}</span>
+                        {onStartDM && (
+                          <button
+                            onClick={() => {
+                              onStartDM(friend.id, friend.name);
+                              onClose();
+                            }}
+                            className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                          >
+                            チャット
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

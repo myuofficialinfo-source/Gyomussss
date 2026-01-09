@@ -314,6 +314,43 @@ export default function Home() {
     setPendingAITask(null);
   };
 
+  // フレンドとのDMを開始
+  const handleStartDM = async (friendId: string, friendName: string) => {
+    // DMが既に存在するか確認
+    const [user1, user2] = [currentUser?.id || "", friendId].sort();
+    const dmChatId = `dm_${user1}_${user2}`;
+
+    const existingDm = dmChats.find(dm => dm.id === dmChatId);
+    if (existingDm) {
+      // 既存のDMを開く
+      setSelectedChat({ type: "dm", id: dmChatId, name: friendName });
+      setSelectedProject(null);
+      return;
+    }
+
+    // DMがなければ作成
+    try {
+      const res = await fetch("/api/chats", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "createDM",
+          userId: currentUser?.id,
+          friendId,
+        }),
+      });
+      const data = await res.json();
+      if (data.dm) {
+        // チャット一覧を更新してから開く
+        await fetchChats(currentUser?.id || "");
+        setSelectedChat({ type: "dm", id: dmChatId, name: friendName });
+        setSelectedProject(null);
+      }
+    } catch (error) {
+      console.error("Failed to create DM:", error);
+    }
+  };
+
   // ローディング中
   if (isLoading) {
     return (
@@ -438,6 +475,7 @@ export default function Home() {
         onClose={() => setIsCreateProjectOpen(false)}
         onCreate={handleCreateProject}
         currentUserId={userWithMood.id}
+        onStartDM={handleStartDM}
       />
 
       <CreateNewProjectModal

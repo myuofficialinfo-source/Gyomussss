@@ -75,12 +75,50 @@ export async function GET(request: Request) {
   }
 }
 
-// グループチャット作成
+// DMチャット作成 or グループチャット作成
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, icon, description, creatorId, members } = body;
+    const { action, name, icon, description, creatorId, members, userId, friendId } = body;
 
+    // DM作成
+    if (action === "createDM") {
+      if (!userId || !friendId) {
+        return NextResponse.json({ error: "userId and friendId required" }, { status: 400 });
+      }
+
+      const [user1, user2] = [userId, friendId].sort();
+      const dmChatId = `dm_${user1}_${user2}`;
+      const now = new Date().toISOString();
+
+      await sql`
+        INSERT INTO dm_chats (id, user1_id, user2_id, created_at)
+        VALUES (${dmChatId}, ${user1}, ${user2}, ${now})
+        ON CONFLICT DO NOTHING
+      `;
+
+      const otherUserResult = await sql`
+        SELECT id, name, avatar, status FROM users WHERE id = ${friendId}
+      `;
+      const otherUser = otherUserResult.rows[0];
+
+      return NextResponse.json({
+        dm: {
+          id: dmChatId,
+          type: "dm",
+          name: otherUser?.name || "Unknown",
+          otherUser: {
+            id: friendId,
+            name: otherUser?.name || "Unknown",
+            avatar: otherUser?.avatar || "?",
+            status: otherUser?.status || "offline",
+          },
+          createdAt: now,
+        }
+      });
+    }
+
+    // グループ作成
     if (!name) {
       return NextResponse.json({ error: "name required" }, { status: 400 });
     }
@@ -113,7 +151,7 @@ export async function POST(request: Request) {
       }
     });
   } catch (error) {
-    console.error("Create group error:", error);
+    console.error("Create chat error:", error);
     return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }
