@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession, signOut } from "next-auth/react";
 import Sidebar, { BookmarkedMessage, Project, LinkedChat, GameSettings, ProjectMember, MoodType, AttendanceRecord } from "@/components/Sidebar";
 import ChatArea, { AIAddData } from "@/components/ChatArea";
 import ProjectSettingsModal from "@/components/ProjectSettingsModal";
@@ -16,8 +15,9 @@ import AccountSettingsModal from "@/components/AccountSettingsModal";
 
 // ローカルストレージのキー
 const ATTENDANCE_STORAGE_KEY = "gyomussss_attendance";
+const USER_STORAGE_KEY = "gyomussss_user";
 
-// User型をローカルで定義（NextAuth sessionと互換性を持たせる）
+// User型をローカルで定義
 type User = {
   id: string;
   name: string;
@@ -29,7 +29,8 @@ type User = {
 };
 
 export default function Home() {
-  const { data: session, status } = useSession();
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [showAttendance, setShowAttendance] = useState(false);
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
@@ -70,15 +71,20 @@ export default function Home() {
     }
   };
 
-  // 初期化：勤怠状態をチェック、プロジェクトデータを取得
+  // 初期化：ユーザー情報とプロジェクトデータを取得
   useEffect(() => {
     const init = async () => {
-      if (status !== "authenticated") return;
+      // ユーザー情報をローカルストレージから取得
+      const savedUser = localStorage.getItem(USER_STORAGE_KEY);
+      if (savedUser) {
+        const user = JSON.parse(savedUser) as User;
+        setCurrentUser(user);
+        setUserMood(user.mood);
+      }
 
+      // 勤怠情報をチェック
       const savedAttendance = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
       const today = new Date().toISOString().split("T")[0];
-
-      // 今日の勤怠記録をチェック
       if (savedAttendance) {
         const attendance = JSON.parse(savedAttendance) as AttendanceRecord;
         if (attendance.date === today) {
@@ -93,74 +99,75 @@ export default function Home() {
         if (Array.isArray(data) && data.length > 0) {
           setProjects(data);
         } else {
-          // 初期データがない場合は空の配列
           setProjects([]);
         }
       } catch (error) {
         console.error("Failed to load projects:", error);
         setProjects([]);
       }
+
+      setIsLoading(false);
     };
 
     init();
-  }, [status]);
+  }, []);
 
-  // ログアウト処理
-  const handleLogout = async () => {
-    setTodayAttendance(null);
-    localStorage.removeItem(ATTENDANCE_STORAGE_KEY);
-    await signOut({ callbackUrl: "/" });
+  // ログイン処理
+  const handleLogin = (name: string) => {
+    const newUser: User = {
+      id: `user_${Date.now()}`,
+      name: name,
+      email: "",
+      avatar: name.charAt(0).toUpperCase(),
+      provider: "email",
+    };
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(newUser));
+    setCurrentUser(newUser);
   };
 
-  // セッションからUser型に変換
-  const currentUser: User | null = session?.user ? {
-    id: session.user.id,
-    name: session.user.name || "Unknown",
-    email: session.user.email || "",
-    avatar: session.user.image || session.user.name?.charAt(0) || "U",
-    provider: "google",
-    mood: userMood,
-  } : null;
+  // ログアウト処理
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setTodayAttendance(null);
+    localStorage.removeItem(USER_STORAGE_KEY);
+    localStorage.removeItem(ATTENDANCE_STORAGE_KEY);
+  };
 
   // ユーザー情報更新処理
   const handleUpdateUser = (user: User) => {
     setUserMood(user.mood);
+    const updatedUser = { ...currentUser, ...user };
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
+    setCurrentUser(updatedUser as User);
   };
 
   // 勤怠完了処理
   const handleAttendanceComplete = (record: AttendanceRecord, mood: MoodType) => {
-    // 勤怠記録を保存
     setTodayAttendance(record);
     localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(record));
-
-    // ユーザーの機嫌を更新
     setUserMood(mood);
-
-    // 勤怠画面を閉じる
     setShowAttendance(false);
   };
 
   const handleBookmarkChange = (message: BookmarkedMessage, isBookmarked: boolean) => {
     if (isBookmarked) {
-      // 追加（重複チェック）
       setBookmarkedMessages((prev) => {
         if (prev.some((m) => m.id === message.id)) return prev;
         return [...prev, message];
       });
     } else {
-      // 削除
       setBookmarkedMessages((prev) => prev.filter((m) => m.id !== message.id));
     }
   };
 
   const handleSelectChat = (type: "dm" | "group", id: string, name: string, messageId?: string) => {
     setSelectedChat({ type, id, name, scrollToMessageId: messageId });
-    setSelectedProject(null); // チャット選択時はプロジェクト選択を解除
+    setSelectedProject(null);
   };
 
   const handleSelectProject = (project: Project) => {
     setSelectedProject(project);
-    setSelectedChat(null); // プロジェクト選択時はチャット選択を解除
+    setSelectedChat(null);
   };
 
   const handleCreateProject = (project: { name: string; icon: string; type: "dm" | "group"; members?: { id: string; role: string }[] }) => {
@@ -174,7 +181,7 @@ export default function Home() {
     };
     const updatedProjects = [...projects, newProject];
     setProjects(updatedProjects);
-    setSelectedProject(newProject); // 作成後に自動選択
+    setSelectedProject(newProject);
     await saveProjects(updatedProjects);
   };
 
@@ -203,7 +210,6 @@ export default function Home() {
     console.log("AI added data:", data);
 
     if (data.type === "task" && data.data.title) {
-      // タスクをProjectDashboardに追加
       setPendingAITask({
         title: data.data.title,
         assigneeId: data.data.assigneeId,
@@ -222,7 +228,7 @@ export default function Home() {
   };
 
   // ローディング中
-  if (status === "loading") {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="text-center">
@@ -234,16 +240,22 @@ export default function Home() {
   }
 
   // 未ログイン時：ログイン画面
-  if (status === "unauthenticated" || !currentUser) {
-    return <LoginPage />;
+  if (!currentUser) {
+    return <LoginPage onLogin={handleLogin} />;
   }
+
+  // 現在のユーザー（moodを反映）
+  const userWithMood: User = {
+    ...currentUser,
+    mood: userMood,
+  };
 
   // ログイン済みで勤怠画面表示
   if (showAttendance) {
     return (
       <>
         <AttendancePage
-          user={currentUser}
+          user={userWithMood}
           projects={projects}
           onComplete={handleAttendanceComplete}
           existingRecord={todayAttendance || undefined}
@@ -253,7 +265,7 @@ export default function Home() {
         <AccountSettingsModal
           isOpen={isAccountSettingsOpen}
           onClose={() => setIsAccountSettingsOpen(false)}
-          user={currentUser}
+          user={userWithMood}
           onLogout={handleLogout}
           onUpdateUser={handleUpdateUser}
         />
@@ -273,7 +285,7 @@ export default function Home() {
         selectedProject={selectedProject}
         onSelectProject={handleSelectProject}
         onCreateNewProject={() => setIsCreateNewProjectOpen(true)}
-        currentUser={currentUser}
+        currentUser={userWithMood}
         onLogout={handleLogout}
         onOpenAttendance={() => setShowAttendance(true)}
         onUpdateUser={handleUpdateUser}
@@ -288,11 +300,10 @@ export default function Home() {
             onOpenGameSettings={() => setIsGameSettingsOpen(true)}
             pendingAITask={pendingAITask}
             onAITaskAdded={handleAITaskAdded}
-            currentUserId={currentUser.id}
+            currentUserId={userWithMood.id}
           />
         ) : selectedChat ? (
           (() => {
-            // このチャットが紐づいているプロジェクトを見つける
             const linkedProject = projects.find(p => p.linkedChats?.some(lc => lc.id === selectedChat.id));
             return (
               <ChatArea
@@ -306,7 +317,7 @@ export default function Home() {
                 onAddFromAI={handleAddFromAI}
                 projectMembers={linkedProject?.projectMembers || []}
                 linkedChats={linkedProject?.linkedChats || []}
-                currentUserId={currentUser.id}
+                currentUserId={userWithMood.id}
               />
             );
           })()
