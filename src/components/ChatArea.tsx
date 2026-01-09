@@ -41,6 +41,9 @@ type Message = {
 // 初期メッセージ（空）
 const dummyMessages: Message[] = [];
 
+// メッセージ保存用のキープレフィックス
+const MESSAGES_STORAGE_KEY_PREFIX = "gyomussss_messages_";
+
 type GroupInfo = {
   name: string;
   description: string;
@@ -252,32 +255,55 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
     handleFileSelect(e.dataTransfer.files);
   };
 
-  // メッセージをサーバーから取得
+  // メッセージをサーバーとローカルストレージから取得
   useEffect(() => {
     const loadMessages = async () => {
       setIsLoadingMessages(true);
+      let loadedMessages: Message[] = [];
+
+      // まずローカルストレージから読み込み
+      const localData = localStorage.getItem(MESSAGES_STORAGE_KEY_PREFIX + chatId);
+      if (localData) {
+        try {
+          loadedMessages = JSON.parse(localData);
+        } catch {
+          console.error("Failed to parse local messages");
+        }
+      }
+
+      // サーバーからも取得を試みる
       try {
         const res = await fetch(`/api/data?type=messages&chatId=${chatId}`);
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          setMessages(data);
-        } else {
-          // 初回はダミーデータを使用（デモ用）
-          setMessages(dummyMessages);
+          loadedMessages = data;
+          // ローカルにも同期
+          localStorage.setItem(MESSAGES_STORAGE_KEY_PREFIX + chatId, JSON.stringify(data));
+        } else if (loadedMessages.length > 0) {
+          // ローカルにデータがあってサーバーにない場合は同期
+          fetch("/api/data", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: "messages", chatId, data: loadedMessages }),
+          }).catch(console.error);
         }
       } catch (error) {
-        console.error("Failed to load messages:", error);
-        setMessages(dummyMessages);
-      } finally {
-        setIsLoadingMessages(false);
+        console.error("Failed to load messages from server:", error);
       }
+
+      setMessages(loadedMessages.length > 0 ? loadedMessages : dummyMessages);
+      setIsLoadingMessages(false);
     };
 
     loadMessages();
   }, [chatId]);
 
-  // メッセージをサーバーに保存
+  // メッセージをサーバーとローカルストレージに保存
   const saveMessages = async (messagesToSave: Message[]) => {
+    // ローカルストレージに保存
+    localStorage.setItem(MESSAGES_STORAGE_KEY_PREFIX + chatId, JSON.stringify(messagesToSave));
+
+    // サーバーにも保存
     try {
       await fetch("/api/data", {
         method: "POST",
@@ -285,7 +311,7 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
         body: JSON.stringify({ type: "messages", chatId, data: messagesToSave }),
       });
     } catch (error) {
-      console.error("Failed to save messages:", error);
+      console.error("Failed to save messages to server:", error);
     }
   };
 

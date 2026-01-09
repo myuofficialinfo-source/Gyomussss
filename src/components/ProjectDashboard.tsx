@@ -7,6 +7,9 @@ import GameDevTips from "./GameDevTips";
 // 最終イベント更新日時を保存するためのキー
 const EVENT_LAST_UPDATE_KEY = "gyomussss_event_last_update";
 
+// プロジェクトデータ保存用のキープレフィックス
+const PROJECT_DATA_KEY_PREFIX = "gyomussss_project_data_";
+
 // 最新チャットメッセージ（空）
 const dummyLatestMessages: {
   id: string;
@@ -424,6 +427,112 @@ export default function ProjectDashboard({ project, onOpenChatSettings, onOpenGa
     saturday: true,
     holidays: true, // 祝日
   });
+
+  // プロジェクトデータの保存関数
+  const saveProjectData = useCallback(async () => {
+    const data = {
+      ganttTasks,
+      taskGroups,
+      milestones,
+      todoItems,
+      spreadsheetLinks,
+      memoEntries,
+      urlLinks,
+      customEvents,
+      widgetOrder,
+      holidaySettings,
+    };
+
+    // ローカルストレージに保存
+    localStorage.setItem(PROJECT_DATA_KEY_PREFIX + project.id, JSON.stringify(data));
+
+    // サーバーにも保存
+    try {
+      await fetch("/api/project-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId: project.id, data }),
+      });
+    } catch (error) {
+      console.error("Failed to save project data to server:", error);
+    }
+  }, [ganttTasks, taskGroups, milestones, todoItems, spreadsheetLinks, memoEntries, urlLinks, customEvents, widgetOrder, holidaySettings, project.id]);
+
+  // プロジェクトデータの読み込み（初回のみ）
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  useEffect(() => {
+    if (isDataLoaded) return;
+
+    const loadData = async () => {
+      // まずローカルストレージから読み込み
+      const localData = localStorage.getItem(PROJECT_DATA_KEY_PREFIX + project.id);
+      let data = localData ? JSON.parse(localData) : null;
+
+      // サーバーからも取得を試みる
+      try {
+        const res = await fetch(`/api/project-data?projectId=${project.id}`);
+        const serverData = await res.json();
+        if (serverData && !serverData.error) {
+          // サーバーにデータがあればそちらを優先
+          const hasServerData = serverData.ganttTasks?.length > 0 ||
+            serverData.todoItems?.length > 0 ||
+            serverData.memoEntries?.length > 0;
+          if (hasServerData) {
+            data = serverData;
+            // ローカルにも同期
+            localStorage.setItem(PROJECT_DATA_KEY_PREFIX + project.id, JSON.stringify(data));
+          } else if (data) {
+            // ローカルにデータがあってサーバーにない場合は同期
+            fetch("/api/project-data", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ projectId: project.id, data }),
+            }).catch(console.error);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load project data from server:", error);
+      }
+
+      // データを適用
+      if (data) {
+        if (data.ganttTasks) setGanttTasks(data.ganttTasks);
+        if (data.taskGroups) setTaskGroups(data.taskGroups);
+        if (data.milestones) setMilestones(data.milestones);
+        if (data.todoItems) setTodoItems(data.todoItems);
+        if (data.spreadsheetLinks) setSpreadsheetLinks(data.spreadsheetLinks);
+        if (data.memoEntries) setMemoEntries(data.memoEntries);
+        if (data.urlLinks) setUrlLinks(data.urlLinks);
+        if (data.customEvents) setCustomEvents(data.customEvents);
+        if (data.widgetOrder) setWidgetOrder(data.widgetOrder);
+        if (data.holidaySettings) setHolidaySettings(data.holidaySettings);
+      }
+
+      setIsDataLoaded(true);
+    };
+
+    loadData();
+  }, [project.id, isDataLoaded]);
+
+  // データ変更時に自動保存（デバウンス）
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    if (!isDataLoaded) return;
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveProjectData();
+    }, 1000); // 1秒後に保存
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [ganttTasks, taskGroups, milestones, todoItems, spreadsheetLinks, memoEntries, urlLinks, customEvents, widgetOrder, holidaySettings, isDataLoaded, saveProjectData]);
 
   // 日本の祝日（2026年の例）
   const japaneseHolidays = [
