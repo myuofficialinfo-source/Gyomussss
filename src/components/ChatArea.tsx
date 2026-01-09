@@ -255,64 +255,93 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
     handleFileSelect(e.dataTransfer.files);
   };
 
-  // メッセージをサーバーとローカルストレージから取得
+  // 最後に取得したメッセージID（ポーリング用）
+  const lastMessageIdRef = useRef<string | null>(null);
+
+  // メッセージをサーバーから取得
   useEffect(() => {
     const loadMessages = async () => {
       setIsLoadingMessages(true);
-      let loadedMessages: Message[] = [];
 
-      // まずローカルストレージから読み込み
-      const localData = localStorage.getItem(MESSAGES_STORAGE_KEY_PREFIX + chatId);
-      if (localData) {
-        try {
-          loadedMessages = JSON.parse(localData);
-        } catch {
-          console.error("Failed to parse local messages");
-        }
-      }
-
-      // サーバーからも取得を試みる
       try {
-        const res = await fetch(`/api/data?type=messages&chatId=${chatId}`);
+        const res = await fetch(`/api/messages?chatId=${chatId}`);
         const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          loadedMessages = data;
-          // ローカルにも同期
-          localStorage.setItem(MESSAGES_STORAGE_KEY_PREFIX + chatId, JSON.stringify(data));
-        } else if (loadedMessages.length > 0) {
-          // ローカルにデータがあってサーバーにない場合は同期
-          fetch("/api/data", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ type: "messages", chatId, data: loadedMessages }),
-          }).catch(console.error);
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages);
+          lastMessageIdRef.current = data.messages[data.messages.length - 1].id;
+        } else {
+          setMessages([]);
         }
       } catch (error) {
-        console.error("Failed to load messages from server:", error);
+        console.error("Failed to load messages:", error);
+        setMessages([]);
       }
 
-      setMessages(loadedMessages.length > 0 ? loadedMessages : dummyMessages);
       setIsLoadingMessages(false);
     };
 
     loadMessages();
   }, [chatId]);
 
-  // メッセージをサーバーとローカルストレージに保存
-  const saveMessages = async (messagesToSave: Message[]) => {
-    // ローカルストレージに保存
-    localStorage.setItem(MESSAGES_STORAGE_KEY_PREFIX + chatId, JSON.stringify(messagesToSave));
+  // 新着メッセージをポーリングで取得（3秒ごと）
+  useEffect(() => {
+    const pollNewMessages = async () => {
+      if (!lastMessageIdRef.current) return;
 
-    // サーバーにも保存
+      try {
+        const res = await fetch(`/api/messages?chatId=${chatId}&after=${lastMessageIdRef.current}`);
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          setMessages(prev => {
+            // 重複を避ける
+            const existingIds = new Set(prev.map(m => m.id));
+            const newMessages = data.messages.filter((m: Message) => !existingIds.has(m.id));
+            if (newMessages.length > 0) {
+              lastMessageIdRef.current = data.messages[data.messages.length - 1].id;
+              return [...prev, ...newMessages];
+            }
+            return prev;
+          });
+        }
+      } catch (error) {
+        console.error("Failed to poll messages:", error);
+      }
+    };
+
+    const interval = setInterval(pollNewMessages, 3000);
+    return () => clearInterval(interval);
+  }, [chatId]);
+
+  // メッセージをサーバーに送信
+  const sendMessageToServer = async (content: string, replyToId?: string): Promise<Message | null> => {
     try {
-      await fetch("/api/data", {
+      const res = await fetch("/api/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "messages", chatId, data: messagesToSave }),
+        body: JSON.stringify({
+          chatId,
+          senderId: currentUserId,
+          senderName: currentUserName,
+          content,
+          replyTo: replyToId ? parseInt(replyToId) : null,
+        }),
       });
+      const data = await res.json();
+      if (data.message) {
+        // サーバーから返ってきたメッセージでIDを更新
+        lastMessageIdRef.current = data.message.id;
+        return data.message;
+      }
+      return null;
     } catch (error) {
-      console.error("Failed to save messages to server:", error);
+      console.error("Failed to send message:", error);
+      return null;
     }
+  };
+
+  // ローカルステート更新用（後方互換性のため残す）
+  const saveMessages = async (messagesToSave: Message[]) => {
+    setMessages(messagesToSave);
   };
 
   useEffect(() => {
@@ -859,7 +888,7 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
     }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     // メッセージか添付ファイルがないと送信できない
     if (!message.trim() && attachments.length === 0) return;
 
@@ -893,44 +922,64 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
       finalContent = `${toLines.join("\n")}\n${message}`;
     }
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      userId: currentUserId,
-      userName: currentUserName,
-      avatar: currentUserAvatar,
-      content: finalContent,
-      timestamp: now.toLocaleTimeString("ja-JP", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
-      date: now.toLocaleDateString("ja-JP", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }),
-      isRead: true,
-      isBookmarked: false,
-      reactions: [],
-      mentions,
-      attachments: attachments.length > 0 ? [...attachments] : undefined,
-      replyTo: replyingTo
-        ? {
-            id: replyingTo.id,
-            userName: replyingTo.userName,
-            content: replyingTo.content.substring(0, 50),
-          }
-        : undefined,
-    };
+    // サーバーにメッセージを送信
+    const serverMessage = await sendMessageToServer(finalContent, replyingTo?.id);
 
-    const updatedMessages = [...messages, newMessage];
-    setMessages(updatedMessages);
+    if (serverMessage) {
+      // サーバーから返ってきたメッセージを使用
+      const newMessage: Message = {
+        ...serverMessage,
+        userId: currentUserId,
+        userName: currentUserName,
+        avatar: currentUserAvatar,
+        mentions,
+        attachments: attachments.length > 0 ? [...attachments] : undefined,
+        replyTo: replyingTo
+          ? {
+              id: replyingTo.id,
+              userName: replyingTo.userName,
+              content: replyingTo.content.substring(0, 50),
+            }
+          : undefined,
+      };
+      setMessages(prev => [...prev, newMessage]);
+    } else {
+      // サーバー送信失敗時はローカルのみに追加（オフライン対応）
+      const newMessage: Message = {
+        id: Date.now().toString(),
+        userId: currentUserId,
+        userName: currentUserName,
+        avatar: currentUserAvatar,
+        content: finalContent,
+        timestamp: now.toLocaleTimeString("ja-JP", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        date: now.toLocaleDateString("ja-JP", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        }),
+        isRead: true,
+        isBookmarked: false,
+        reactions: [],
+        mentions,
+        attachments: attachments.length > 0 ? [...attachments] : undefined,
+        replyTo: replyingTo
+          ? {
+              id: replyingTo.id,
+              userName: replyingTo.userName,
+              content: replyingTo.content.substring(0, 50),
+            }
+          : undefined,
+      };
+      setMessages(prev => [...prev, newMessage]);
+    }
+
     setMessage("");
     setReplyingTo(null);
     setToTarget([]);
     setAttachments([]); // 添付ファイルをクリア
-
-    // サーバーに保存
-    saveMessages(updatedMessages);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
