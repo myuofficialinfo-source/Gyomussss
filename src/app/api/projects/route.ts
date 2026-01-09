@@ -9,10 +9,14 @@ export async function GET(request: Request) {
 
     if (userId) {
       // ユーザーが参加しているプロジェクトのみ返す
+      // JSONBの配列内にidが含まれるかをチェック（より確実な方法）
       const result = await sql`
         SELECT * FROM projects
         WHERE creator_id = ${userId}
-           OR project_members::jsonb @> ${JSON.stringify([{ id: userId }])}::jsonb
+           OR EXISTS (
+             SELECT 1 FROM jsonb_array_elements(project_members::jsonb) AS member
+             WHERE member->>'id' = ${userId}
+           )
       `;
 
       const projects = result.rows.map(p => ({
