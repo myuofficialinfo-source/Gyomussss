@@ -105,6 +105,8 @@ type Props = {
   projectMembers?: ProjectMember[]; // プロジェクトメンバー一覧
   linkedChats?: LinkedChat[]; // 紐づいているチャット一覧
   currentUserId?: string; // 現在のユーザーID
+  currentUserName?: string; // 現在のユーザー名
+  currentUserAvatar?: string; // 現在のユーザーアバター
 };
 
 // AI要約のタイプ
@@ -148,7 +150,7 @@ type AIResponse = {
 // ローカルストレージのキー
 const MESSAGE_DRAFT_KEY = "gyomussss_message_drafts";
 
-export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, scrollToMessageId, onBookmarkChange, isProjectLinked = false, onAddFromAI, projectMembers = [], linkedChats = [], currentUserId = "me" }: Props) {
+export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, scrollToMessageId, onBookmarkChange, isProjectLinked = false, onAddFromAI, projectMembers = [], linkedChats = [], currentUserId = "me", currentUserName = "ユーザー", currentUserAvatar = "U" }: Props) {
   // 管理者かどうかをチェック（グループ設定は管理者のみ編集可能）
   // デバッグモード: 常に管理者として扱う
   const isAdmin = true;
@@ -196,8 +198,6 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
   // AIからの返信表示用
   const [aiResponseMessage, setAIResponseMessage] = useState<AIResponse | null>(null);
   const [showAIResponseModal, setShowAIResponseModal] = useState(false);
-
-  const currentUserName = "ユーザー名";
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -468,7 +468,7 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
       id: Date.now().toString(),
       userId: currentUserId,
       userName: currentUserName,
-      avatar: "U",
+      avatar: currentUserAvatar,
       content: `[To:AI] AIさん\n${userMessage}`,
       timestamp,
       date,
@@ -897,7 +897,7 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
       id: Date.now().toString(),
       userId: currentUserId,
       userName: currentUserName,
-      avatar: "U",
+      avatar: currentUserAvatar,
       content: finalContent,
       timestamp: now.toLocaleTimeString("ja-JP", {
         hour: "2-digit",

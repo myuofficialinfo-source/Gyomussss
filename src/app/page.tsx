@@ -448,6 +448,8 @@ export default function Home() {
                 projectMembers={linkedProject?.projectMembers || []}
                 linkedChats={linkedProject?.linkedChats || []}
                 currentUserId={userWithMood.id}
+                currentUserName={userWithMood.name}
+                currentUserAvatar={userWithMood.avatar}
               />
             );
           })()
