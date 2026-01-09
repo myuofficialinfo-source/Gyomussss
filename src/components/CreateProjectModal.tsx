@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useToast } from "./Toast";
 
 type SearchUser = {
   id: string;
@@ -43,6 +44,7 @@ type Props = {
 };
 
 export default function CreateProjectModal({ isOpen, onClose, onCreate, currentUserId }: Props) {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<"dm" | "group">("dm");
 
   // DM用のstate
@@ -148,7 +150,6 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, currentU
 
   const handleSendFriendRequest = async (toUserId: string) => {
     try {
-      console.log("Sending friend request:", { fromUserId: currentUserId, toUserId });
       const res = await fetch("/api/friends", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -159,20 +160,31 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, currentU
         }),
       });
       const data = await res.json();
-      console.log("Friend request response:", data);
       if (data.request) {
         setPendingRequests([...pendingRequests, toUserId]);
-        alert("フレンド申請を送信しました");
+        showToast({
+          type: "success",
+          title: "フレンド申請を送信しました",
+          message: "相手が承認するとフレンドになります",
+        });
       } else if (data.error) {
-        alert(`エラー: ${data.error}`);
+        showToast({
+          type: "error",
+          title: "フレンド申請に失敗しました",
+          message: data.error,
+        });
       }
     } catch (error) {
       console.error("Failed to send friend request:", error);
-      alert("フレンド申請の送信に失敗しました");
+      showToast({
+        type: "error",
+        title: "フレンド申請に失敗しました",
+        message: "通信エラーが発生しました",
+      });
     }
   };
 
-  const handleAcceptRequest = async (requestId: string) => {
+  const handleAcceptRequest = async (requestId: string, fromUserName?: string) => {
     try {
       const res = await fetch("/api/friends", {
         method: "POST",
@@ -184,11 +196,26 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, currentU
       });
       const data = await res.json();
       if (data.request) {
-        // リストを更新
+        showToast({
+          type: "success",
+          title: "フレンドになりました",
+          message: fromUserName ? `${fromUserName}さんとフレンドになりました` : undefined,
+        });
         fetchFriendsAndRequests();
+      } else if (data.error) {
+        showToast({
+          type: "error",
+          title: "承認に失敗しました",
+          message: data.error,
+        });
       }
     } catch (error) {
       console.error("Failed to accept request:", error);
+      showToast({
+        type: "error",
+        title: "承認に失敗しました",
+        message: "通信エラーが発生しました",
+      });
     }
   };
 
@@ -205,9 +232,18 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, currentU
       const data = await res.json();
       if (data.request) {
         setIncomingRequests(incomingRequests.filter(r => r.id !== requestId));
+        showToast({
+          type: "info",
+          title: "フレンド申請を拒否しました",
+        });
       }
     } catch (error) {
       console.error("Failed to reject request:", error);
+      showToast({
+        type: "error",
+        title: "拒否に失敗しました",
+        message: "通信エラーが発生しました",
+      });
     }
   };
 
@@ -388,7 +424,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, currentU
                           </p>
                         </div>
                         <button
-                          onClick={() => handleAcceptRequest(request.id)}
+                          onClick={() => handleAcceptRequest(request.id, request.fromUser?.name)}
                           className="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
                         >
                           承認

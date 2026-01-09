@@ -1,7 +1,8 @@
 "use client";
 
 import { ReactNode } from "react";
+import { ToastProvider } from "./Toast";
 
 export default function Providers({ children }: { children: ReactNode }) {
-  return <>{children}</>;
+  return <ToastProvider>{children}</ToastProvider>;
 }
