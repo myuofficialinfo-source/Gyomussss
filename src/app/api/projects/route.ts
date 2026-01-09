@@ -1,67 +1,5 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-const projectsPath = path.join(process.cwd(), "data", "projects.json");
-
-// Sidebar.tsxと同じProject型
-type ProjectMember = {
-  id: string;
-  name: string;
-  avatar?: string;
-  sourceType: "dm" | "group";
-  sourceId: string;
-  sourceName: string;
-  permission: "admin" | "member";
-};
-
-type LinkedChat = {
-  id: string;
-  name: string;
-  type: "dm" | "group";
-  icon?: string;
-};
-
-type MemberRole = {
-  memberId: string;
-  memberName: string;
-  roles: string[];
-};
-
-type GameSettings = {
-  title: string;
-  description: string;
-  platforms: string[];
-  playTime: string;
-  genre: string;
-  releaseDate: string;
-  tags: string[];
-  memberRoles?: MemberRole[];
-};
-
-type Project = {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  creatorId?: string;
-  linkedChats?: LinkedChat[];
-  projectMembers?: ProjectMember[];
-  gameSettings?: GameSettings;
-};
-
-function readProjects(): Project[] {
-  try {
-    const data = fs.readFileSync(projectsPath, "utf-8");
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-}
-
-function writeProjects(projects: Project[]) {
-  fs.writeFileSync(projectsPath, JSON.stringify(projects, null, 2));
-}
+import { sql } from "@vercel/postgres";
 
 // プロジェクト一覧取得 / 特定ユーザーのプロジェクト取得
 export async function GET(request: Request) {
@@ -69,21 +7,46 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
 
-    const projects = readProjects();
-
     if (userId) {
       // ユーザーが参加しているプロジェクトのみ返す
-      const userProjects = projects.filter(p =>
-        p.creatorId === userId ||
-        p.projectMembers?.some(m => m.id === userId)
-      );
-      return NextResponse.json({ projects: userProjects });
+      const result = await sql`
+        SELECT * FROM projects
+        WHERE creator_id = ${userId}
+           OR project_members::jsonb @> ${JSON.stringify([{ id: userId }])}::jsonb
+      `;
+
+      const projects = result.rows.map(p => ({
+        id: p.id,
+        name: p.name,
+        icon: p.icon,
+        description: p.description,
+        creatorId: p.creator_id,
+        linkedChats: p.linked_chats || [],
+        projectMembers: p.project_members || [],
+        gameSettings: p.game_settings,
+      }));
+
+      return NextResponse.json({ projects });
     }
+
+    // 全プロジェクト
+    const result = await sql`SELECT * FROM projects`;
+
+    const projects = result.rows.map(p => ({
+      id: p.id,
+      name: p.name,
+      icon: p.icon,
+      description: p.description,
+      creatorId: p.creator_id,
+      linkedChats: p.linked_chats || [],
+      projectMembers: p.project_members || [],
+      gameSettings: p.game_settings,
+    }));
 
     return NextResponse.json({ projects });
   } catch (error) {
     console.error("Get projects error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }
 
@@ -97,10 +60,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Project name is required" }, { status: 400 });
     }
 
-    const projects = readProjects();
+    const projectId = `project_${Date.now()}`;
+    const now = new Date().toISOString();
 
-    const newProject: Project = {
-      id: `project_${Date.now()}`,
+    await sql`
+      INSERT INTO projects (id, name, icon, description, creator_id, linked_chats, project_members, game_settings, created_at)
+      VALUES (
+        ${projectId},
+        ${name},
+        ${icon || "🎮"},
+        ${description || ""},
+        ${creatorId || null},
+        ${JSON.stringify(linkedChats || [])},
+        ${JSON.stringify(projectMembers || [])},
+        ${gameSettings ? JSON.stringify(gameSettings) : null},
+        ${now}
+      )
+    `;
+
+    const newProject = {
+      id: projectId,
       name,
       icon: icon || "🎮",
       description: description || "",
@@ -110,13 +89,10 @@ export async function POST(request: Request) {
       gameSettings,
     };
 
-    projects.push(newProject);
-    writeProjects(projects);
-
     return NextResponse.json({ project: newProject });
   } catch (error) {
     console.error("Create project error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }
 
@@ -124,26 +100,46 @@ export async function POST(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { id, ...updates } = body;
+    const { id, name, icon, description, linkedChats, projectMembers, gameSettings } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Project ID is required" }, { status: 400 });
     }
 
-    const projects = readProjects();
-    const projectIndex = projects.findIndex(p => p.id === id);
-
-    if (projectIndex === -1) {
+    // 既存プロジェクトを確認
+    const existing = await sql`SELECT * FROM projects WHERE id = ${id}`;
+    if (existing.rows.length === 0) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    projects[projectIndex] = { ...projects[projectIndex], ...updates };
-    writeProjects(projects);
+    const current = existing.rows[0];
 
-    return NextResponse.json({ project: projects[projectIndex] });
+    await sql`
+      UPDATE projects SET
+        name = ${name !== undefined ? name : current.name},
+        icon = ${icon !== undefined ? icon : current.icon},
+        description = ${description !== undefined ? description : current.description},
+        linked_chats = ${linkedChats !== undefined ? JSON.stringify(linkedChats) : current.linked_chats},
+        project_members = ${projectMembers !== undefined ? JSON.stringify(projectMembers) : current.project_members},
+        game_settings = ${gameSettings !== undefined ? JSON.stringify(gameSettings) : current.game_settings}
+      WHERE id = ${id}
+    `;
+
+    const updatedProject = {
+      id,
+      name: name !== undefined ? name : current.name,
+      icon: icon !== undefined ? icon : current.icon,
+      description: description !== undefined ? description : current.description,
+      creatorId: current.creator_id,
+      linkedChats: linkedChats !== undefined ? linkedChats : current.linked_chats,
+      projectMembers: projectMembers !== undefined ? projectMembers : current.project_members,
+      gameSettings: gameSettings !== undefined ? gameSettings : current.game_settings,
+    };
+
+    return NextResponse.json({ project: updatedProject });
   } catch (error) {
     console.error("Update project error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }
 
@@ -157,18 +153,18 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Project ID is required" }, { status: 400 });
     }
 
-    const projects = readProjects();
-    const filteredProjects = projects.filter(p => p.id !== id);
+    const result = await sql`DELETE FROM projects WHERE id = ${id} RETURNING id`;
 
-    if (filteredProjects.length === projects.length) {
+    if (result.rows.length === 0) {
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    writeProjects(filteredProjects);
+    // プロジェクトデータも削除
+    await sql`DELETE FROM project_data WHERE project_id = ${id}`;
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete project error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }

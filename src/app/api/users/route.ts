@@ -1,33 +1,17 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { sql } from "@vercel/postgres";
 
-const usersFilePath = path.join(process.cwd(), "data", "users.json");
-
-// ユーザー型定義（OAuth対応を見据えた設計）
+// ユーザー型定義
 export type StoredUser = {
   id: string;
   name: string;
   email?: string;
   avatar: string;
   provider: "email" | "google" | "twitter" | "discord";
-  providerId?: string; // OAuth時のプロバイダー側ID
+  providerId?: string;
   createdAt: string;
   lastLoginAt: string;
 };
-
-function readUsers(): StoredUser[] {
-  try {
-    const data = fs.readFileSync(usersFilePath, "utf-8");
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-}
-
-function writeUsers(users: StoredUser[]) {
-  fs.writeFileSync(usersFilePath, JSON.stringify(users, null, 2));
-}
 
 // ユーザー登録 or ログイン
 export async function POST(request: Request) {
@@ -39,47 +23,72 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const users = readUsers();
     const now = new Date().toISOString();
 
-    // 既存ユーザーを検索（OAuthの場合はproviderIdで、メールの場合は名前で）
-    let existingUser: StoredUser | undefined;
+    // 既存ユーザーを検索
+    let existingUser = null;
 
     if (provider !== "email" && providerId) {
-      existingUser = users.find(u => u.provider === provider && u.providerId === providerId);
+      const result = await sql`
+        SELECT * FROM users WHERE id = ${providerId}
+      `;
+      if (result.rows.length > 0) {
+        existingUser = result.rows[0];
+      }
     }
 
-    // 名前での検索（同名ユーザーがいる場合は既存ユーザーとしてログイン）
+    // 名前での検索
     if (!existingUser) {
-      existingUser = users.find(u => u.name.toLowerCase() === name.toLowerCase() && u.provider === provider);
+      const result = await sql`
+        SELECT * FROM users WHERE LOWER(name) = LOWER(${name})
+      `;
+      if (result.rows.length > 0) {
+        existingUser = result.rows[0];
+      }
     }
 
     if (existingUser) {
-      // 既存ユーザー: 最終ログイン時刻を更新
-      existingUser.lastLoginAt = now;
-      writeUsers(users);
-      return NextResponse.json({ user: existingUser, isNew: false });
+      // 既存ユーザー: 最終ログイン時刻を更新（ステータスもオンラインに）
+      await sql`
+        UPDATE users SET status = 'online' WHERE id = ${existingUser.id}
+      `;
+      const user: StoredUser = {
+        id: existingUser.id,
+        name: existingUser.name,
+        email: existingUser.email || undefined,
+        avatar: existingUser.avatar || existingUser.name.charAt(0).toUpperCase(),
+        provider: provider,
+        providerId: providerId,
+        createdAt: existingUser.created_at,
+        lastLoginAt: now,
+      };
+      return NextResponse.json({ user, isNew: false });
     }
 
     // 新規ユーザー作成
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    const avatar = name.charAt(0).toUpperCase();
+
+    await sql`
+      INSERT INTO users (id, name, avatar, status, created_at)
+      VALUES (${userId}, ${name}, ${avatar}, 'online', ${now})
+    `;
+
     const newUser: StoredUser = {
-      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: userId,
       name,
       email,
-      avatar: name.charAt(0).toUpperCase(),
+      avatar,
       provider,
       providerId,
       createdAt: now,
       lastLoginAt: now,
     };
 
-    users.push(newUser);
-    writeUsers(users);
-
     return NextResponse.json({ user: newUser, isNew: true });
   } catch (error) {
     console.error("User registration error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }
 
@@ -90,41 +99,54 @@ export async function GET(request: Request) {
     const query = searchParams.get("q");
     const userId = searchParams.get("id");
 
-    const users = readUsers();
-
     // IDで検索
     if (userId) {
-      const user = users.find(u => u.id === userId);
-      if (user) {
-        return NextResponse.json({ user });
+      const result = await sql`
+        SELECT * FROM users WHERE id = ${userId}
+      `;
+      if (result.rows.length > 0) {
+        const u = result.rows[0];
+        return NextResponse.json({
+          user: {
+            id: u.id,
+            name: u.name,
+            avatar: u.avatar,
+            status: u.status,
+          }
+        });
       }
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
     // 名前で検索
     if (query) {
-      const results = users.filter(u =>
-        u.name.toLowerCase().includes(query.toLowerCase()) ||
-        u.id.toLowerCase().includes(query.toLowerCase())
-      ).map(u => ({
+      const searchPattern = `%${query.toLowerCase()}%`;
+      const result = await sql`
+        SELECT id, name, avatar, status FROM users
+        WHERE LOWER(name) LIKE ${searchPattern} OR LOWER(id) LIKE ${searchPattern}
+      `;
+      const users = result.rows.map(u => ({
         id: u.id,
         name: u.name,
         avatar: u.avatar,
-        provider: u.provider,
+        status: u.status,
       }));
-      return NextResponse.json({ users: results });
+      return NextResponse.json({ users });
     }
 
-    // 全ユーザー一覧（公開情報のみ）
-    const publicUsers = users.map(u => ({
+    // 全ユーザー一覧
+    const result = await sql`
+      SELECT id, name, avatar, status FROM users
+    `;
+    const users = result.rows.map(u => ({
       id: u.id,
       name: u.name,
       avatar: u.avatar,
-      provider: u.provider,
+      status: u.status,
     }));
-    return NextResponse.json({ users: publicUsers });
+    return NextResponse.json({ users });
   } catch (error) {
     console.error("User search error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }

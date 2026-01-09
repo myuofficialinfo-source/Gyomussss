@@ -1,47 +1,7 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { sql } from "@vercel/postgres";
 
-const friendRequestsPath = path.join(process.cwd(), "data", "friend-requests.json");
-const friendsPath = path.join(process.cwd(), "data", "friends.json");
-const usersPath = path.join(process.cwd(), "data", "users.json");
-
-type FriendRequest = {
-  id: string;
-  fromUserId: string;
-  toUserId: string;
-  status: "pending" | "accepted" | "rejected";
-  createdAt: string;
-};
-
-type Friendship = {
-  id: string;
-  user1Id: string;
-  user2Id: string;
-  createdAt: string;
-};
-
-type StoredUser = {
-  id: string;
-  name: string;
-  avatar: string;
-  provider: string;
-};
-
-function readJSON<T>(filePath: string): T[] {
-  try {
-    const data = fs.readFileSync(filePath, "utf-8");
-    return JSON.parse(data);
-  } catch {
-    return [];
-  }
-}
-
-function writeJSON<T>(filePath: string, data: T[]) {
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
-}
-
-// フレンドリクエスト送信 / フレンド一覧取得
+// フレンドリクエスト送信 / 承認 / 拒否
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -57,40 +17,44 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Cannot send request to yourself" }, { status: 400 });
       }
 
-      const requests = readJSON<FriendRequest>(friendRequestsPath);
-      const friends = readJSON<Friendship>(friendsPath);
-
       // 既にフレンドか確認
-      const alreadyFriends = friends.some(f =>
-        (f.user1Id === fromUserId && f.user2Id === toUserId) ||
-        (f.user1Id === toUserId && f.user2Id === fromUserId)
-      );
-      if (alreadyFriends) {
+      const friendCheck = await sql`
+        SELECT * FROM friends
+        WHERE (user_id = ${fromUserId} AND friend_id = ${toUserId})
+           OR (user_id = ${toUserId} AND friend_id = ${fromUserId})
+      `;
+      if (friendCheck.rows.length > 0) {
         return NextResponse.json({ error: "Already friends" }, { status: 400 });
       }
 
       // 既存のリクエストを確認
-      const existingRequest = requests.find(r =>
-        r.status === "pending" &&
-        ((r.fromUserId === fromUserId && r.toUserId === toUserId) ||
-          (r.fromUserId === toUserId && r.toUserId === fromUserId))
-      );
-      if (existingRequest) {
+      const existingCheck = await sql`
+        SELECT * FROM friend_requests
+        WHERE status = 'pending'
+          AND ((from_user_id = ${fromUserId} AND to_user_id = ${toUserId})
+            OR (from_user_id = ${toUserId} AND to_user_id = ${fromUserId}))
+      `;
+      if (existingCheck.rows.length > 0) {
         return NextResponse.json({ error: "Request already exists" }, { status: 400 });
       }
 
-      const newRequest: FriendRequest = {
-        id: `req_${Date.now()}`,
-        fromUserId,
-        toUserId,
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      };
+      // 新規リクエスト作成
+      const result = await sql`
+        INSERT INTO friend_requests (from_user_id, to_user_id, status, created_at)
+        VALUES (${fromUserId}, ${toUserId}, 'pending', ${new Date().toISOString()})
+        RETURNING id, from_user_id, to_user_id, status, created_at
+      `;
 
-      requests.push(newRequest);
-      writeJSON(friendRequestsPath, requests);
-
-      return NextResponse.json({ request: newRequest });
+      const newRequest = result.rows[0];
+      return NextResponse.json({
+        request: {
+          id: newRequest.id,
+          fromUserId: newRequest.from_user_id,
+          toUserId: newRequest.to_user_id,
+          status: newRequest.status,
+          createdAt: newRequest.created_at,
+        }
+      });
     }
 
     if (action === "accept" || action === "reject") {
@@ -99,42 +63,65 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Request ID required" }, { status: 400 });
       }
 
-      const requests = readJSON<FriendRequest>(friendRequestsPath);
-      const requestIndex = requests.findIndex(r => r.id === requestId);
-
-      if (requestIndex === -1) {
+      // リクエストを取得
+      const reqResult = await sql`
+        SELECT * FROM friend_requests WHERE id = ${requestId}
+      `;
+      if (reqResult.rows.length === 0) {
         return NextResponse.json({ error: "Request not found" }, { status: 404 });
       }
 
-      const friendRequest = requests[requestIndex];
+      const friendRequest = reqResult.rows[0];
 
       if (action === "accept") {
-        friendRequest.status = "accepted";
+        // ステータス更新
+        await sql`
+          UPDATE friend_requests SET status = 'accepted' WHERE id = ${requestId}
+        `;
 
-        // フレンド関係を作成
-        const friends = readJSON<Friendship>(friendsPath);
-        const newFriendship: Friendship = {
-          id: `friend_${Date.now()}`,
-          user1Id: friendRequest.fromUserId,
-          user2Id: friendRequest.toUserId,
-          createdAt: new Date().toISOString(),
-        };
-        friends.push(newFriendship);
-        writeJSON(friendsPath, friends);
+        // 双方向のフレンド関係を作成
+        await sql`
+          INSERT INTO friends (user_id, friend_id, created_at)
+          VALUES (${friendRequest.from_user_id}, ${friendRequest.to_user_id}, ${new Date().toISOString()})
+          ON CONFLICT DO NOTHING
+        `;
+        await sql`
+          INSERT INTO friends (user_id, friend_id, created_at)
+          VALUES (${friendRequest.to_user_id}, ${friendRequest.from_user_id}, ${new Date().toISOString()})
+          ON CONFLICT DO NOTHING
+        `;
+
+        return NextResponse.json({
+          request: {
+            id: friendRequest.id,
+            fromUserId: friendRequest.from_user_id,
+            toUserId: friendRequest.to_user_id,
+            status: "accepted",
+            createdAt: friendRequest.created_at,
+          }
+        });
       } else {
-        friendRequest.status = "rejected";
+        // 拒否
+        await sql`
+          UPDATE friend_requests SET status = 'rejected' WHERE id = ${requestId}
+        `;
+
+        return NextResponse.json({
+          request: {
+            id: friendRequest.id,
+            fromUserId: friendRequest.from_user_id,
+            toUserId: friendRequest.to_user_id,
+            status: "rejected",
+            createdAt: friendRequest.created_at,
+          }
+        });
       }
-
-      requests[requestIndex] = friendRequest;
-      writeJSON(friendRequestsPath, requests);
-
-      return NextResponse.json({ request: friendRequest });
     }
 
     return NextResponse.json({ error: "Invalid action" }, { status: 400 });
   } catch (error) {
     console.error("Friend request error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }
 
@@ -149,68 +136,78 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "User ID required" }, { status: 400 });
     }
 
-    const users = readJSON<StoredUser>(usersPath);
-
     if (type === "requests") {
       // 受信したフレンドリクエスト（pending）
-      const requests = readJSON<FriendRequest>(friendRequestsPath);
-      const pendingRequests = requests
-        .filter(r => r.toUserId === userId && r.status === "pending")
-        .map(r => {
-          const fromUser = users.find(u => u.id === r.fromUserId);
-          return {
-            ...r,
-            fromUser: fromUser ? {
-              id: fromUser.id,
-              name: fromUser.name,
-              avatar: fromUser.avatar,
-            } : null,
-          };
-        });
+      const result = await sql`
+        SELECT fr.id, fr.from_user_id, fr.to_user_id, fr.status, fr.created_at,
+               u.id as user_id, u.name, u.avatar, u.status as user_status
+        FROM friend_requests fr
+        JOIN users u ON u.id = fr.from_user_id
+        WHERE fr.to_user_id = ${userId} AND fr.status = 'pending'
+      `;
 
-      return NextResponse.json({ requests: pendingRequests });
+      const requests = result.rows.map(r => ({
+        id: r.id,
+        fromUserId: r.from_user_id,
+        toUserId: r.to_user_id,
+        status: r.status,
+        createdAt: r.created_at,
+        fromUser: {
+          id: r.user_id,
+          name: r.name,
+          avatar: r.avatar,
+          status: r.user_status,
+        },
+      }));
+
+      return NextResponse.json({ requests });
     }
 
     if (type === "pending") {
       // 送信済みで保留中のリクエスト
-      const requests = readJSON<FriendRequest>(friendRequestsPath);
-      const pendingRequests = requests
-        .filter(r => r.fromUserId === userId && r.status === "pending")
-        .map(r => {
-          const toUser = users.find(u => u.id === r.toUserId);
-          return {
-            ...r,
-            toUser: toUser ? {
-              id: toUser.id,
-              name: toUser.name,
-              avatar: toUser.avatar,
-            } : null,
-          };
-        });
+      const result = await sql`
+        SELECT fr.id, fr.from_user_id, fr.to_user_id, fr.status, fr.created_at,
+               u.id as user_id, u.name, u.avatar, u.status as user_status
+        FROM friend_requests fr
+        JOIN users u ON u.id = fr.to_user_id
+        WHERE fr.from_user_id = ${userId} AND fr.status = 'pending'
+      `;
 
-      return NextResponse.json({ requests: pendingRequests });
+      const requests = result.rows.map(r => ({
+        id: r.id,
+        fromUserId: r.from_user_id,
+        toUserId: r.to_user_id,
+        status: r.status,
+        createdAt: r.created_at,
+        toUser: {
+          id: r.user_id,
+          name: r.name,
+          avatar: r.avatar,
+          status: r.user_status,
+        },
+      }));
+
+      return NextResponse.json({ requests });
     }
 
     // フレンド一覧
-    const friendships = readJSON<Friendship>(friendsPath);
-    const userFriendships = friendships.filter(f =>
-      f.user1Id === userId || f.user2Id === userId
-    );
+    const result = await sql`
+      SELECT u.id, u.name, u.avatar, u.status
+      FROM friends f
+      JOIN users u ON u.id = f.friend_id
+      WHERE f.user_id = ${userId}
+    `;
 
-    const friends = userFriendships.map(f => {
-      const friendId = f.user1Id === userId ? f.user2Id : f.user1Id;
-      const friend = users.find(u => u.id === friendId);
-      return friend ? {
-        id: friend.id,
-        name: friend.name,
-        avatar: friend.avatar,
-        provider: friend.provider,
-      } : null;
-    }).filter(Boolean);
+    const friends = result.rows.map(u => ({
+      id: u.id,
+      name: u.name,
+      avatar: u.avatar,
+      status: u.status,
+    }));
 
     return NextResponse.json({ friends });
   } catch (error) {
     console.error("Get friends error:", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal server error", details: String(error) }, { status: 500 });
   }
 }

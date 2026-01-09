@@ -1,70 +1,76 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
-
-// データファイルのパス
-const DATA_DIR = path.join(process.cwd(), "data");
-const PROJECTS_FILE = path.join(DATA_DIR, "projects.json");
-const MESSAGES_FILE = path.join(DATA_DIR, "messages.json");
-const ATTENDANCE_FILE = path.join(DATA_DIR, "attendance.json");
-
-// データディレクトリの初期化
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-// ファイル読み込み
-function readJsonFile(filePath: string, defaultValue: unknown = {}) {
-  try {
-    if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, "utf-8");
-      return JSON.parse(data);
-    }
-  } catch (error) {
-    console.error(`Error reading ${filePath}:`, error);
-  }
-  return defaultValue;
-}
-
-// ファイル書き込み
-function writeJsonFile(filePath: string, data: unknown) {
-  ensureDataDir();
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-}
+import { sql } from "@vercel/postgres";
 
 // GET: データ取得
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type");
 
-  ensureDataDir();
-
   try {
     switch (type) {
-      case "projects":
-        return NextResponse.json(readJsonFile(PROJECTS_FILE, []));
-      case "messages":
+      case "projects": {
+        const result = await sql`SELECT * FROM projects`;
+        const projects = result.rows.map(p => ({
+          id: p.id,
+          name: p.name,
+          icon: p.icon,
+          description: p.description,
+          creatorId: p.creator_id,
+          linkedChats: p.linked_chats || [],
+          projectMembers: p.project_members || [],
+          gameSettings: p.game_settings,
+        }));
+        return NextResponse.json(projects);
+      }
+
+      case "messages": {
         const chatId = searchParams.get("chatId");
-        const allMessages = readJsonFile(MESSAGES_FILE, {});
         if (chatId) {
-          return NextResponse.json(allMessages[chatId] || []);
+          const result = await sql`
+            SELECT * FROM messages WHERE chat_id = ${chatId} ORDER BY timestamp ASC
+          `;
+          const messages = result.rows.map(m => ({
+            id: m.id,
+            senderId: m.sender_id,
+            senderName: m.sender_name,
+            content: m.content,
+            timestamp: m.timestamp,
+            reactions: m.reactions || [],
+            replyTo: m.reply_to,
+            isEdited: m.is_edited,
+          }));
+          return NextResponse.json(messages);
         }
-        return NextResponse.json(allMessages);
-      case "attendance":
+        // 全メッセージは返さない（chatIdが必須）
+        return NextResponse.json([]);
+      }
+
+      case "attendance": {
         const userId = searchParams.get("userId");
-        const allAttendance = readJsonFile(ATTENDANCE_FILE, {});
         if (userId) {
-          return NextResponse.json(allAttendance[userId] || []);
+          const result = await sql`
+            SELECT * FROM attendance WHERE user_id = ${userId} ORDER BY date DESC
+          `;
+          const attendance = result.rows.map(a => ({
+            id: a.id,
+            userId: a.user_id,
+            date: a.date,
+            clockIn: a.clock_in,
+            clockOut: a.clock_out,
+            breakMinutes: a.break_minutes,
+            status: a.status,
+          }));
+          return NextResponse.json(attendance);
         }
-        return NextResponse.json(allAttendance);
+        return NextResponse.json([]);
+      }
+
       default:
         return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
   } catch (error) {
     console.error("GET error:", error);
-    return NextResponse.json({ error: "Failed to read data" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to read data", details: String(error) }, { status: 500 });
   }
 }
 
@@ -74,36 +80,72 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { type, data, chatId, userId } = body;
 
-    ensureDataDir();
-
     switch (type) {
-      case "projects":
-        writeJsonFile(PROJECTS_FILE, data);
-        return NextResponse.json({ success: true });
+      case "projects": {
+        // プロジェクトの一括更新は/api/projectsを使用
+        return NextResponse.json({ error: "Use /api/projects endpoint" }, { status: 400 });
+      }
 
-      case "messages":
+      case "messages": {
         if (!chatId) {
           return NextResponse.json({ error: "chatId required" }, { status: 400 });
         }
-        const allMessages = readJsonFile(MESSAGES_FILE, {});
-        allMessages[chatId] = data;
-        writeJsonFile(MESSAGES_FILE, allMessages);
-        return NextResponse.json({ success: true });
 
-      case "attendance":
+        // 既存メッセージを削除して新規追加
+        await sql`DELETE FROM messages WHERE chat_id = ${chatId}`;
+
+        for (const msg of data) {
+          await sql`
+            INSERT INTO messages (chat_id, sender_id, sender_name, content, timestamp, reactions, reply_to, is_edited)
+            VALUES (
+              ${chatId},
+              ${msg.senderId || msg.sender?.id || "unknown"},
+              ${msg.senderName || msg.sender?.name || "Unknown"},
+              ${msg.content},
+              ${msg.timestamp || new Date().toISOString()},
+              ${JSON.stringify(msg.reactions || [])},
+              ${msg.replyTo || null},
+              ${msg.isEdited || false}
+            )
+          `;
+        }
+
+        return NextResponse.json({ success: true });
+      }
+
+      case "attendance": {
         if (!userId) {
           return NextResponse.json({ error: "userId required" }, { status: 400 });
         }
-        const allAttendance = readJsonFile(ATTENDANCE_FILE, {});
-        allAttendance[userId] = data;
-        writeJsonFile(ATTENDANCE_FILE, allAttendance);
+
+        for (const att of data) {
+          await sql`
+            INSERT INTO attendance (user_id, date, clock_in, clock_out, break_minutes, status)
+            VALUES (
+              ${userId},
+              ${att.date},
+              ${att.clockIn || null},
+              ${att.clockOut || null},
+              ${att.breakMinutes || 0},
+              ${att.status || null}
+            )
+            ON CONFLICT (user_id, date)
+            DO UPDATE SET
+              clock_in = ${att.clockIn || null},
+              clock_out = ${att.clockOut || null},
+              break_minutes = ${att.breakMinutes || 0},
+              status = ${att.status || null}
+          `;
+        }
+
         return NextResponse.json({ success: true });
+      }
 
       default:
         return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
   } catch (error) {
     console.error("POST error:", error);
-    return NextResponse.json({ error: "Failed to save data" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to save data", details: String(error) }, { status: 500 });
   }
 }
