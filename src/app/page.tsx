@@ -340,11 +340,14 @@ export default function Home() {
         }),
       });
       const data = await res.json();
+      console.log("Create DM response:", data);
       if (data.dm) {
-        // チャット一覧を更新してから開く
-        await fetchChats(currentUser?.id || "");
-        setSelectedChat({ type: "dm", id: dmChatId, name: friendName });
+        // 新しいDMをstateに直接追加
+        setDmChats(prev => [...prev, data.dm]);
+        setSelectedChat({ type: "dm", id: data.dm.id, name: friendName });
         setSelectedProject(null);
+      } else if (data.error) {
+        console.error("Failed to create DM:", data.error);
       }
     } catch (error) {
       console.error("Failed to create DM:", error);
