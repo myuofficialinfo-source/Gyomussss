@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Sidebar, { BookmarkedMessage, initialBookmarkedMessages, Project, LinkedChat, GameSettings, ProjectMember, User, MoodType, AttendanceRecord } from "@/components/Sidebar";
+import { useSession, signOut } from "next-auth/react";
+import Sidebar, { BookmarkedMessage, Project, LinkedChat, GameSettings, ProjectMember, MoodType, AttendanceRecord } from "@/components/Sidebar";
 import ChatArea, { AIAddData } from "@/components/ChatArea";
 import ProjectSettingsModal from "@/components/ProjectSettingsModal";
 import CreateProjectModal from "@/components/CreateProjectModal";
@@ -14,15 +15,25 @@ import AttendancePage from "@/components/AttendancePage";
 import AccountSettingsModal from "@/components/AccountSettingsModal";
 
 // ローカルストレージのキー
-const USER_STORAGE_KEY = "gyomussss_user";
 const ATTENDANCE_STORAGE_KEY = "gyomussss_attendance";
 
+// User型をローカルで定義（NextAuth sessionと互換性を持たせる）
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  provider: "google" | "twitter" | "discord" | "email";
+  mood?: MoodType;
+  lastMoodUpdate?: string;
+};
+
 export default function Home() {
-  // 認証状態
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: session, status } = useSession();
+
   const [showAttendance, setShowAttendance] = useState(false);
   const [todayAttendance, setTodayAttendance] = useState<AttendanceRecord | null>(null);
+  const [userMood, setUserMood] = useState<MoodType | undefined>(undefined);
 
   const [selectedChat, setSelectedChat] = useState<{
     type: "dm" | "group";
@@ -37,7 +48,7 @@ export default function Home() {
   const [isProjectChatSettingsOpen, setIsProjectChatSettingsOpen] = useState(false);
   const [isGameSettingsOpen, setIsGameSettingsOpen] = useState(false);
   const [isAccountSettingsOpen, setIsAccountSettingsOpen] = useState(false);
-  const [bookmarkedMessages, setBookmarkedMessages] = useState<BookmarkedMessage[]>(initialBookmarkedMessages);
+  const [bookmarkedMessages, setBookmarkedMessages] = useState<BookmarkedMessage[]>([]);
 
   // プロジェクト関連のstate
   const [projects, setProjects] = useState<Project[]>([]);
@@ -59,26 +70,20 @@ export default function Home() {
     }
   };
 
-  // 初期化：ログイン状態と勤怠状態をチェック、プロジェクトデータを取得
+  // 初期化：勤怠状態をチェック、プロジェクトデータを取得
   useEffect(() => {
     const init = async () => {
-      const savedUser = localStorage.getItem(USER_STORAGE_KEY);
+      if (status !== "authenticated") return;
+
       const savedAttendance = localStorage.getItem(ATTENDANCE_STORAGE_KEY);
       const today = new Date().toISOString().split("T")[0];
 
-      if (savedUser) {
-        const user = JSON.parse(savedUser) as User;
-        setCurrentUser(user);
-
-        // 今日の勤怠記録をチェック
-        if (savedAttendance) {
-          const attendance = JSON.parse(savedAttendance) as AttendanceRecord;
-          if (attendance.date === today) {
-            setTodayAttendance(attendance);
-          }
+      // 今日の勤怠記録をチェック
+      if (savedAttendance) {
+        const attendance = JSON.parse(savedAttendance) as AttendanceRecord;
+        if (attendance.date === today) {
+          setTodayAttendance(attendance);
         }
-        // 勤怠画面は表示しない（時計アイコンから開く）
-        setShowAttendance(false);
       }
 
       // プロジェクトデータをサーバーから取得
@@ -88,47 +93,38 @@ export default function Home() {
         if (Array.isArray(data) && data.length > 0) {
           setProjects(data);
         } else {
-          // 初期データがない場合はデフォルトを設定
-          const defaultProjects: Project[] = [
-            { id: "p1", name: "ツミナビ", icon: "📊", description: "積みゲーナビゲーションアプリ" },
-          ];
-          setProjects(defaultProjects);
-          await saveProjects(defaultProjects);
+          // 初期データがない場合は空の配列
+          setProjects([]);
         }
       } catch (error) {
         console.error("Failed to load projects:", error);
-        // エラー時はデフォルト
-        setProjects([
-          { id: "p1", name: "ツミナビ", icon: "📊", description: "積みゲーナビゲーションアプリ" },
-        ]);
+        setProjects([]);
       }
-
-      setIsLoading(false);
     };
 
     init();
-  }, []);
-
-  // ログイン処理
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
-    // ログイン後は直接業務画面へ
-    setShowAttendance(false);
-  };
+  }, [status]);
 
   // ログアウト処理
-  const handleLogout = () => {
-    setCurrentUser(null);
+  const handleLogout = async () => {
     setTodayAttendance(null);
-    localStorage.removeItem(USER_STORAGE_KEY);
     localStorage.removeItem(ATTENDANCE_STORAGE_KEY);
+    await signOut({ callbackUrl: "/" });
   };
+
+  // セッションからUser型に変換
+  const currentUser: User | null = session?.user ? {
+    id: session.user.id,
+    name: session.user.name || "Unknown",
+    email: session.user.email || "",
+    avatar: session.user.image || session.user.name?.charAt(0) || "U",
+    provider: "google",
+    mood: userMood,
+  } : null;
 
   // ユーザー情報更新処理
   const handleUpdateUser = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    setUserMood(user.mood);
   };
 
   // 勤怠完了処理
@@ -138,15 +134,7 @@ export default function Home() {
     localStorage.setItem(ATTENDANCE_STORAGE_KEY, JSON.stringify(record));
 
     // ユーザーの機嫌を更新
-    if (currentUser) {
-      const updatedUser = {
-        ...currentUser,
-        mood,
-        lastMoodUpdate: new Date().toISOString(),
-      };
-      setCurrentUser(updatedUser);
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser));
-    }
+    setUserMood(mood);
 
     // 勤怠画面を閉じる
     setShowAttendance(false);
@@ -177,7 +165,6 @@ export default function Home() {
 
   const handleCreateProject = (project: { name: string; icon: string; type: "dm" | "group"; members?: { id: string; role: string }[] }) => {
     console.log("Created project:", project);
-    // TODO: プロジェクト作成のロジック
   };
 
   const handleCreateNewProject = async (projectData: Omit<Project, "id">) => {
@@ -227,7 +214,6 @@ export default function Home() {
         groupName: data.data.groupName,
       });
     }
-    // TODO: todo, url, memoの処理も追加
   };
 
   // AIタスク追加完了時の処理
@@ -236,7 +222,7 @@ export default function Home() {
   };
 
   // ローディング中
-  if (isLoading) {
+  if (status === "loading") {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="text-center">
@@ -248,8 +234,8 @@ export default function Home() {
   }
 
   // 未ログイン時：ログイン画面
-  if (!currentUser) {
-    return <LoginPage onLogin={handleLogin} />;
+  if (status === "unauthenticated" || !currentUser) {
+    return <LoginPage />;
   }
 
   // ログイン済みで勤怠画面表示

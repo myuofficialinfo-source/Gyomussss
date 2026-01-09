@@ -176,79 +176,13 @@ export type Project = {
   gameSettings?: GameSettings;
 };
 
-// ダミーデータ
-const dummyFriends: Friend[] = [
-  { id: "dm1", name: "田中太郎", avatar: "田", status: "online", unread: 2 },
-  { id: "dm2", name: "佐藤花子", avatar: "佐", status: "busy", unread: 0 },
-  { id: "dm3", name: "山田一郎", avatar: "山", status: "offline", unread: 5 },
-  { id: "dm4", name: "鈴木次郎", avatar: "鈴", status: "online", unread: 0 },
-];
-
-const dummyGroups: Group[] = [
-  { id: "g1", name: "【ノイズ】PPMD", icon: "🎮", unread: 3, memberCount: 5 },
-  { id: "g2", name: "【ノイズ】勤務報告", icon: "📋", unread: 0, memberCount: 8 },
-  { id: "g3", name: "【ベリー】DH_グラフィック", icon: "🎨", unread: 24, memberCount: 4 },
-  { id: "g4", name: "マイチャット", icon: "📝", unread: 0, memberCount: 1 },
-  { id: "g5", name: "【ノイズ】Jenkins", icon: "🔧", unread: 150, memberCount: 3 },
-  { id: "g6", name: "steam メール転送", icon: "📧", unread: 25, memberCount: 2 },
-];
-
-const dummyToMeMessages: ToMeMessage[] = [
-  {
-    id: "tome1",
-    chatId: "g1",
-    chatName: "【ノイズ】PPMD",
-    chatType: "group",
-    senderName: "杉山楓",
-    senderAvatar: "杉",
-    preview: "社内ならVercelとか使わずにいける...",
-    timestamp: "1月7日 14:51",
-  },
-  {
-    id: "tome2",
-    chatId: "g3",
-    chatName: "【ベリー】DH_グラフィック",
-    chatType: "group",
-    senderName: "佐藤花子",
-    senderAvatar: "佐",
-    preview: "デザイン確認お願いします",
-    timestamp: "1月7日 10:30",
-  },
-  {
-    id: "tome3",
-    chatId: "dm1",
-    chatName: "田中太郎",
-    chatType: "dm",
-    senderName: "田中太郎",
-    senderAvatar: "田",
-    preview: "明日の件、確認お願いします",
-    timestamp: "1月8日 9:00",
-  },
-];
+// データ（実際のデータはサーバーから取得）
+const dummyFriends: Friend[] = [];
+const dummyGroups: Group[] = [];
+const dummyToMeMessages: ToMeMessage[] = [];
 
 // 初期ブックマークデータ（エクスポート用）
-export const initialBookmarkedMessages: BookmarkedMessage[] = [
-  {
-    id: "bm1",
-    chatId: "g1",
-    chatName: "【ノイズ】PPMD",
-    chatType: "group",
-    senderName: "杉山楓",
-    senderAvatar: "杉",
-    preview: "社内ならVercelとか使わずにいける...",
-    timestamp: "1月7日 14:51",
-  },
-  {
-    id: "bm2",
-    chatId: "dm1",
-    chatName: "田中太郎",
-    chatType: "dm",
-    senderName: "田中太郎",
-    senderAvatar: "田",
-    preview: "来週の打ち合わせの件ですが...",
-    timestamp: "1月6日 18:22",
-  },
-];
+export const initialBookmarkedMessages: BookmarkedMessage[] = [];
 
 // 機嫌アイコンの設定
 const moodIcons: Record<MoodType, string> = {
