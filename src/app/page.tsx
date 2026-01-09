@@ -367,6 +367,7 @@ export default function Home() {
         isOpen={isCreateNewProjectOpen}
         onClose={() => setIsCreateNewProjectOpen(false)}
         onCreate={handleCreateNewProject}
+        currentUser={userWithMood}
       />
 
       <ProjectChatSettingsModal

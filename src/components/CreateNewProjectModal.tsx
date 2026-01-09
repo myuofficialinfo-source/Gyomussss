@@ -92,13 +92,20 @@ const genreOptions = [
   "その他",
 ];
 
+type CurrentUser = {
+  id: string;
+  name: string;
+  avatar: string;
+};
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (project: Omit<Project, "id">) => void;
+  currentUser: CurrentUser;
 };
 
-export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Props) {
+export default function CreateNewProjectModal({ isOpen, onClose, onCreate, currentUser }: Props) {
   const [activeTab, setActiveTab] = useState<"basic" | "roles">("basic");
 
   // 基本設定（ゲーム情報）
@@ -111,9 +118,19 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
   const [releaseDate, setReleaseDate] = useState("");
   const [tags, setTags] = useState<GameTag[]>([]);
 
-  // メンバー設定
+  // メンバー設定 - 作成者は自動で管理者として追加
   const [selectedChats, setSelectedChats] = useState<LinkedChat[]>([]);
-  const [selectedMembers, setSelectedMembers] = useState<ProjectMember[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<ProjectMember[]>(() => [
+    {
+      id: currentUser.id,
+      name: currentUser.name,
+      avatar: currentUser.avatar,
+      sourceType: "dm",
+      sourceId: "owner",
+      sourceName: "プロジェクト作成者",
+      permission: "admin",
+    },
+  ]);
   const [searchQuery, setSearchQuery] = useState("");
   const [memberSourceTab, setMemberSourceTab] = useState<"dm" | "group">("dm");
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
@@ -139,7 +156,18 @@ export default function CreateNewProjectModal({ isOpen, onClose, onCreate }: Pro
     setReleaseDate("");
     setTags([]);
     setSelectedChats([]);
-    setSelectedMembers([]);
+    // 作成者は常に管理者として維持
+    setSelectedMembers([
+      {
+        id: currentUser.id,
+        name: currentUser.name,
+        avatar: currentUser.avatar,
+        sourceType: "dm",
+        sourceId: "owner",
+        sourceName: "プロジェクト作成者",
+        permission: "admin",
+      },
+    ]);
     setSearchQuery("");
     setActiveTab("basic");
     setExpandedGroups([]);

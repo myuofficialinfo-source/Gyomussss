@@ -356,18 +356,11 @@ export default function ProjectDashboard({ project, onOpenChatSettings, onOpenGa
   };
 
   // TODOリスト
-  const [todoItems, setTodoItems] = useState<TodoItem[]>([
-    { id: "todo1", text: "企画書の確認", completed: false },
-    { id: "todo2", text: "デザインレビュー", completed: true },
-    { id: "todo3", text: "テストプレイ準備", completed: false },
-  ]);
+  const [todoItems, setTodoItems] = useState<TodoItem[]>([]);
   const [newTodoText, setNewTodoText] = useState("");
 
   // スプレッドシートリンク
-  const [spreadsheetLinks, setSpreadsheetLinks] = useState<SpreadsheetLink[]>([
-    { id: "ss1", name: "仕様書", url: "" },
-    { id: "ss2", name: "スケジュール", url: "" },
-  ]);
+  const [spreadsheetLinks, setSpreadsheetLinks] = useState<SpreadsheetLink[]>([]);
   const [isAddSpreadsheetOpen, setIsAddSpreadsheetOpen] = useState(false);
   const [newSpreadsheet, setNewSpreadsheet] = useState({ name: "", url: "" });
 
@@ -2857,7 +2850,7 @@ export default function ProjectDashboard({ project, onOpenChatSettings, onOpenGa
                     <div className="text-2xl font-bold text-slate-800">
                       {ganttTasks.filter(t => t.status === "active").length}
                     </div>
-                    <div className="text-xs text-green-600 mt-1">+3 今週</div>
+                    {/* 週次の変化は動的に計算可能 */}
                   </div>
                   <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
                     <span className="text-base">📋</span>
@@ -2884,7 +2877,7 @@ export default function ProjectDashboard({ project, onOpenChatSettings, onOpenGa
                         }).length;
                       })()}
                     </div>
-                    <div className="text-xs text-red-500 mt-1">-2 今週</div>
+                    {/* 週次の変化は動的に計算可能 */}
                   </div>
                   <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
                     <span className="text-base">⏰</span>
