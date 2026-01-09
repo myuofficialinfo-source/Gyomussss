@@ -86,15 +86,25 @@ export default function Home() {
     // ローカルストレージに保存（バックアップ）
     localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projectsToSave));
 
-    // サーバーにも保存を試みる
-    try {
-      await fetch("/api/data", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "projects", data: projectsToSave }),
-      });
-    } catch (error) {
-      console.error("Failed to save projects to server:", error);
+    // サーバーにも保存を試みる（各プロジェクトをPUTで更新）
+    for (const project of projectsToSave) {
+      try {
+        await fetch("/api/projects", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: project.id,
+            name: project.name,
+            icon: project.icon,
+            description: project.description,
+            linkedChats: project.linkedChats,
+            projectMembers: project.projectMembers,
+            gameSettings: project.gameSettings,
+          }),
+        });
+      } catch (error) {
+        console.error("Failed to save project to server:", project.id, error);
+      }
     }
   };
 
@@ -128,18 +138,24 @@ export default function Home() {
           }
         }
 
-        // プロジェクトデータを取得（サーバー優先、なければローカルストレージ）
+        // プロジェクトデータを取得（サーバー優先、ユーザーが参加しているプロジェクトのみ）
         let loadedProjects: Project[] = [];
-        try {
-          const res = await fetch("/api/data?type=projects");
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-              loadedProjects = data;
+        const savedUserData = localStorage.getItem(USER_STORAGE_KEY);
+        const userId = savedUserData ? JSON.parse(savedUserData).id : null;
+
+        if (userId) {
+          try {
+            // ユーザーが作成者またはメンバーのプロジェクトを取得
+            const res = await fetch(`/api/projects?userId=${userId}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.projects && Array.isArray(data.projects)) {
+                loadedProjects = data.projects;
+              }
             }
+          } catch (error) {
+            console.error("Failed to load projects from server:", error);
           }
-        } catch (error) {
-          console.error("Failed to load projects from server:", error);
         }
 
         // サーバーにデータがない場合、ローカルストレージから復元
@@ -147,15 +163,12 @@ export default function Home() {
           const savedProjects = localStorage.getItem(PROJECTS_STORAGE_KEY);
           if (savedProjects) {
             try {
-              loadedProjects = JSON.parse(savedProjects);
-              // サーバーに同期（バックグラウンドで）
-              if (loadedProjects.length > 0) {
-                fetch("/api/data", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ type: "projects", data: loadedProjects }),
-                }).catch(console.error);
-              }
+              const localProjects = JSON.parse(savedProjects) as Project[];
+              // ユーザーが作成者またはメンバーのプロジェクトのみフィルタリング
+              loadedProjects = localProjects.filter(p =>
+                p.creatorId === userId ||
+                p.projectMembers?.some(m => m.id === userId)
+              );
             } catch {
               console.error("Failed to parse local projects");
             }
@@ -512,7 +525,7 @@ export default function Home() {
         projectMembers={selectedProject?.projectMembers || []}
         onSave={handleSaveLinkedChats}
         availableDMs={dmChats.map(dm => ({
-          id: dm.id,
+          id: dm.otherUser.id, // 相手ユーザーの実際のIDを使用
           name: dm.otherUser.name,
           avatar: dm.otherUser.avatar,
           status: (dm.otherUser.status as "online" | "busy" | "offline") || "offline",

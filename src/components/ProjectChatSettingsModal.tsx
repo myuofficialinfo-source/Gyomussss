@@ -309,7 +309,7 @@ export default function ProjectChatSettingsModal({
                 /* DMリスト */
                 filteredDMs.length > 0 ? (
                   filteredDMs.map((dm) => {
-                    const memberId = `dm-${dm.id}`;
+                    const memberId = dm.id; // 相手ユーザーの実際のIDを使用
                     const isSelected = isMemberInGroup(memberId);
                     return (
                       <div
