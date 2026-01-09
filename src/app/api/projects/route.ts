@@ -58,13 +58,14 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, icon, description, creatorId, linkedChats, projectMembers, gameSettings } = body;
+    const { id, name, icon, description, creatorId, linkedChats, projectMembers, gameSettings } = body;
 
     if (!name) {
       return NextResponse.json({ error: "Project name is required" }, { status: 400 });
     }
 
-    const projectId = `project_${Date.now()}`;
+    // IDが渡された場合はそれを使用、なければ新規生成
+    const projectId = id || `project_${Date.now()}`;
     const now = new Date().toISOString();
 
     await sql`

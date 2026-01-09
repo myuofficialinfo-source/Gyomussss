@@ -289,15 +289,39 @@ export default function Home() {
   };
 
   const handleCreateNewProject = async (projectData: Omit<Project, "id">) => {
-    const newProject: Project = {
-      id: `p${Date.now()}`,
-      ...projectData,
-      creatorId: currentUser?.id, // 作成者IDを設定
-    };
-    const updatedProjects = [...projects, newProject];
-    setProjects(updatedProjects);
-    setSelectedProject(newProject);
-    await saveProjects(updatedProjects);
+    try {
+      // サーバーにプロジェクトを作成
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: projectData.name,
+          icon: projectData.icon,
+          description: projectData.description,
+          creatorId: currentUser?.id,
+          linkedChats: projectData.linkedChats || [],
+          projectMembers: projectData.projectMembers || [],
+          gameSettings: projectData.gameSettings,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.project) {
+        const newProject: Project = {
+          ...data.project,
+          creatorId: currentUser?.id,
+        };
+        const updatedProjects = [...projects, newProject];
+        setProjects(updatedProjects);
+        setSelectedProject(newProject);
+        // ローカルストレージにも保存
+        localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(updatedProjects));
+      } else {
+        console.error("Failed to create project:", data.error);
+      }
+    } catch (error) {
+      console.error("Failed to create project:", error);
+    }
   };
 
   const handleSaveLinkedChats = async (chats: LinkedChat[], members: ProjectMember[]) => {
@@ -307,7 +331,47 @@ export default function Home() {
     const updatedProjects = projects.map(p => p.id === selectedProject.id ? updatedProject : p);
     setProjects(updatedProjects);
     setSelectedProject(updatedProject);
-    await saveProjects(updatedProjects);
+
+    // ローカルストレージに保存
+    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(updatedProjects));
+
+    // サーバーに保存（PUTで更新、失敗したらPOSTで作成）
+    try {
+      const putRes = await fetch("/api/projects", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: updatedProject.id,
+          name: updatedProject.name,
+          icon: updatedProject.icon,
+          description: updatedProject.description,
+          linkedChats: updatedProject.linkedChats,
+          projectMembers: updatedProject.projectMembers,
+          gameSettings: updatedProject.gameSettings,
+        }),
+      });
+
+      if (!putRes.ok) {
+        // PUTが失敗した場合（プロジェクトがDBに存在しない）、POSTで作成
+        console.log("PUT failed, trying POST to create project");
+        await fetch("/api/projects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: updatedProject.id, // 既存のIDを使用
+            name: updatedProject.name,
+            icon: updatedProject.icon,
+            description: updatedProject.description,
+            creatorId: updatedProject.creatorId || currentUser?.id,
+            linkedChats: updatedProject.linkedChats,
+            projectMembers: updatedProject.projectMembers,
+            gameSettings: updatedProject.gameSettings,
+          }),
+        });
+      }
+    } catch (error) {
+      console.error("Failed to save project:", error);
+    }
   };
 
   const handleSaveGameSettings = async (settings: GameSettings) => {
