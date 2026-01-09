@@ -3,21 +3,21 @@
 import { useState, useEffect } from "react";
 import type { LinkedChat, ProjectMember, ProjectPermission } from "./Sidebar";
 
-// グループリスト（空）
-const availableGroups: {
-  id: string;
-  name: string;
-  icon: string;
-  members: { id: string; name: string; avatar: string }[];
-}[] = [];
-
-// DMリスト（空）
-const availableDMs: {
+// DM型定義
+type DMChat = {
   id: string;
   name: string;
   avatar: string;
   status: "online" | "busy" | "offline";
-}[] = [];
+};
+
+// グループ型定義
+type GroupChat = {
+  id: string;
+  name: string;
+  icon: string;
+  members: { id: string; name: string; avatar: string }[];
+};
 
 const roleLabels: Record<ProjectPermission, string> = {
   admin: "管理者",
@@ -30,6 +30,8 @@ type Props = {
   linkedChats: LinkedChat[];
   projectMembers: ProjectMember[];
   onSave: (chats: LinkedChat[], members: ProjectMember[]) => void;
+  availableDMs?: DMChat[];
+  availableGroups?: GroupChat[];
 };
 
 export default function ProjectChatSettingsModal({
@@ -38,6 +40,8 @@ export default function ProjectChatSettingsModal({
   linkedChats,
   projectMembers,
   onSave,
+  availableDMs = [],
+  availableGroups = [],
 }: Props) {
   const [selectedChats, setSelectedChats] = useState<LinkedChat[]>(linkedChats);
   const [selectedMembers, setSelectedMembers] = useState<ProjectMember[]>(projectMembers);
@@ -124,7 +128,7 @@ export default function ProjectChatSettingsModal({
   };
 
   // グループの全メンバーを選択/解除
-  const handleSelectAllGroupMembers = (group: (typeof availableGroups)[0]) => {
+  const handleSelectAllGroupMembers = (group: GroupChat) => {
     const memberIds = group.members.map((m) => m.id);
     const allSelected = memberIds.every((id) => isMemberInGroup(id));
 

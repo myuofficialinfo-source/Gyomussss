@@ -511,6 +511,18 @@ export default function Home() {
         linkedChats={selectedProject?.linkedChats || []}
         projectMembers={selectedProject?.projectMembers || []}
         onSave={handleSaveLinkedChats}
+        availableDMs={dmChats.map(dm => ({
+          id: dm.id,
+          name: dm.otherUser.name,
+          avatar: dm.otherUser.avatar,
+          status: (dm.otherUser.status as "online" | "busy" | "offline") || "offline",
+        }))}
+        availableGroups={groupChats.map(g => ({
+          id: g.id,
+          name: g.name,
+          icon: g.icon,
+          members: [],
+        }))}
       />
 
       {selectedProject && (
