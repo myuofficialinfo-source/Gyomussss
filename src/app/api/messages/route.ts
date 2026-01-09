@@ -50,6 +50,7 @@ export async function GET(request: Request) {
       isRead: true,
       isBookmarked: false,
       reactions: m.reactions || [],
+      mentions: [], // メンション情報（デフォルト空配列）
       replyTo: m.reply_to ? { id: m.reply_to.toString() } : undefined,
       isEdited: m.is_edited,
     }));
@@ -98,6 +99,7 @@ export async function POST(request: Request) {
       isRead: true,
       isBookmarked: false,
       reactions: [],
+      mentions: [], // メンション情報（デフォルト空配列）
       replyTo: m.reply_to ? { id: m.reply_to.toString() } : undefined,
       isEdited: false,
     };

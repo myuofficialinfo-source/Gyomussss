@@ -265,9 +265,20 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
 
       try {
         const res = await fetch(`/api/messages?chatId=${chatId}`);
+        if (!res.ok) {
+          console.error("Failed to load messages:", res.status);
+          setMessages([]);
+          setIsLoadingMessages(false);
+          return;
+        }
         const data = await res.json();
-        if (data.messages && data.messages.length > 0) {
-          setMessages(data.messages);
+        if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
+          // 各メッセージにmentionsがなければ空配列を追加
+          const messagesWithMentions = data.messages.map((m: Message) => ({
+            ...m,
+            mentions: m.mentions || [],
+          }));
+          setMessages(messagesWithMentions);
           lastMessageIdRef.current = data.messages[data.messages.length - 1].id;
         } else {
           setMessages([]);
@@ -290,12 +301,15 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
 
       try {
         const res = await fetch(`/api/messages?chatId=${chatId}&after=${lastMessageIdRef.current}`);
+        if (!res.ok) return; // エラー時は無視
         const data = await res.json();
-        if (data.messages && data.messages.length > 0) {
+        if (data.messages && Array.isArray(data.messages) && data.messages.length > 0) {
           setMessages(prev => {
             // 重複を避ける
             const existingIds = new Set(prev.map(m => m.id));
-            const newMessages = data.messages.filter((m: Message) => !existingIds.has(m.id));
+            const newMessages = data.messages
+              .filter((m: Message) => !existingIds.has(m.id))
+              .map((m: Message) => ({ ...m, mentions: m.mentions || [] })); // mentionsを保証
             if (newMessages.length > 0) {
               lastMessageIdRef.current = data.messages[data.messages.length - 1].id;
               return [...prev, ...newMessages];
@@ -303,8 +317,8 @@ export default function ChatArea({ chatName, chatId, chatType, onOpenSettings, s
             return prev;
           });
         }
-      } catch (error) {
-        console.error("Failed to poll messages:", error);
+      } catch {
+        // ポーリングエラーは無視
       }
     };
 
