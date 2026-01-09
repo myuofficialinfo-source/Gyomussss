@@ -100,6 +100,30 @@ export async function GET() {
       )
     `;
 
+    // DMチャットテーブル
+    await sql`
+      CREATE TABLE IF NOT EXISTS dm_chats (
+        id VARCHAR(255) PRIMARY KEY,
+        user1_id VARCHAR(255) NOT NULL,
+        user2_id VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user1_id, user2_id)
+      )
+    `;
+
+    // グループチャットテーブル
+    await sql`
+      CREATE TABLE IF NOT EXISTS group_chats (
+        id VARCHAR(255) PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        icon VARCHAR(50) DEFAULT '🎮',
+        description TEXT,
+        creator_id VARCHAR(255),
+        members JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `;
+
     return NextResponse.json({ success: true, message: "Database tables created successfully" });
   } catch (error) {
     console.error("Database init error:", error);

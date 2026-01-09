@@ -56,6 +56,28 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
 
+  // チャット一覧
+  type DMChat = {
+    id: string;
+    type: "dm";
+    name: string;
+    otherUser: {
+      id: string;
+      name: string;
+      avatar: string;
+      status: string;
+    };
+  };
+  type GroupChat = {
+    id: string;
+    type: "group";
+    name: string;
+    icon: string;
+    members: unknown[];
+  };
+  const [dmChats, setDmChats] = useState<DMChat[]>([]);
+  const [groupChats, setGroupChats] = useState<GroupChat[]>([]);
+
   // AIから追加されるタスク
   const [pendingAITask, setPendingAITask] = useState<AITaskData | null>(null);
 
@@ -139,6 +161,29 @@ export default function Home() {
 
     init();
   }, []);
+
+  // チャット一覧を取得
+  const fetchChats = async (userId: string) => {
+    try {
+      const res = await fetch(`/api/chats?userId=${userId}`);
+      const data = await res.json();
+      if (data.dms) {
+        setDmChats(data.dms);
+      }
+      if (data.groups) {
+        setGroupChats(data.groups);
+      }
+    } catch (error) {
+      console.error("Failed to fetch chats:", error);
+    }
+  };
+
+  // ユーザーがログインしたらチャット一覧を取得
+  useEffect(() => {
+    if (currentUser?.id) {
+      fetchChats(currentUser.id);
+    }
+  }, [currentUser?.id]);
 
   // ログイン処理（サーバーに登録）
   const handleLogin = async (name: string) => {
@@ -331,6 +376,9 @@ export default function Home() {
         onLogout={handleLogout}
         onOpenAttendance={() => setShowAttendance(true)}
         onUpdateUser={handleUpdateUser}
+        dmChats={dmChats}
+        groupChats={groupChats}
+        onRefreshChats={() => fetchChats(userWithMood.id)}
       />
 
       {/* Main Content */}

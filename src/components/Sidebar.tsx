@@ -30,21 +30,6 @@ export type AttendanceRecord = {
   memo?: string;
 };
 
-type Friend = {
-  id: string;
-  name: string;
-  avatar: string;
-  status: "online" | "offline" | "busy";
-  unread: number;
-};
-
-type Group = {
-  id: string;
-  name: string;
-  icon: string;
-  unread: number;
-  memberCount: number;
-};
 
 type ToMeMessage = {
   id: string;
@@ -177,8 +162,6 @@ export type Project = {
 };
 
 // データ（実際のデータはサーバーから取得）
-const dummyFriends: Friend[] = [];
-const dummyGroups: Group[] = [];
 const dummyToMeMessages: ToMeMessage[] = [];
 
 // 初期ブックマークデータ（エクスポート用）
@@ -189,6 +172,28 @@ const moodIcons: Record<MoodType, string> = {
   good: "😊",
   normal: "😐",
   tired: "😴",
+};
+
+// DMチャットの型
+type DMChatItem = {
+  id: string;
+  type: "dm";
+  name: string;
+  otherUser: {
+    id: string;
+    name: string;
+    avatar: string;
+    status: string;
+  };
+};
+
+// グループチャットの型
+type GroupChatItem = {
+  id: string;
+  type: "group";
+  name: string;
+  icon: string;
+  members: unknown[];
 };
 
 type Props = {
@@ -206,9 +211,13 @@ type Props = {
   onLogout?: () => void;
   onOpenAttendance?: () => void;
   onUpdateUser?: (user: User) => void;
+  // チャット一覧
+  dmChats?: DMChatItem[];
+  groupChats?: GroupChatItem[];
+  onRefreshChats?: () => void;
 };
 
-export default function Sidebar({ onSelectChat, selectedChat, onCreateProject, bookmarkedMessages, projects, selectedProject, onSelectProject, onCreateNewProject, currentUser, onLogout, onOpenAttendance, onUpdateUser }: Props) {
+export default function Sidebar({ onSelectChat, selectedChat, onCreateProject, bookmarkedMessages, projects, selectedProject, onSelectProject, onCreateNewProject, currentUser, onLogout, onOpenAttendance, onUpdateUser, dmChats = [], groupChats = [] }: Props) {
   const [activeTab, setActiveTab] = useState<"dm" | "group">("group");
   const [activeSubTab, setActiveSubTab] = useState<"message" | "tome" | "bookmark">("message");
   const [isChatExpanded, setIsChatExpanded] = useState(true);
@@ -226,12 +235,6 @@ export default function Sidebar({ onSelectChat, selectedChat, onCreateProject, b
     type: "dm" | "group";
     id: string;
   } | null>(null);
-
-  const statusColors = {
-    online: "bg-green-500",
-    busy: "bg-red-500",
-    offline: "bg-gray-400",
-  };
 
   // ピン留めトグル
   const handleTogglePin = (type: "dm" | "group", id: string) => {
@@ -267,38 +270,22 @@ export default function Sidebar({ onSelectChat, selectedChat, onCreateProject, b
     setContextMenu(null);
   };
 
-  // DMリストをソート（ピン留め → 通知あり → 通知なし）
-  const sortedFriends = [...dummyFriends].sort((a, b) => {
+  // DMリストをソート（ピン留め優先）
+  const sortedDmChats = [...dmChats].sort((a, b) => {
     const aPinned = pinnedDMs.includes(a.id);
     const bPinned = pinnedDMs.includes(b.id);
-
-    // ピン留めを上に
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
-
-    // 同じピン留め状態なら、通知数で並び替え
-    if (a.unread > 0 && b.unread === 0) return -1;
-    if (a.unread === 0 && b.unread > 0) return 1;
-
-    // 通知数が多い順
-    return b.unread - a.unread;
+    return 0;
   });
 
-  // グループリストをソート（ピン留め → 通知あり → 通知なし）
-  const sortedGroups = [...dummyGroups].sort((a, b) => {
+  // グループリストをソート（ピン留め優先）
+  const sortedGroupChats = [...groupChats].sort((a, b) => {
     const aPinned = pinnedGroups.includes(a.id);
     const bPinned = pinnedGroups.includes(b.id);
-
-    // ピン留めを上に
     if (aPinned && !bPinned) return -1;
     if (!aPinned && bPinned) return 1;
-
-    // 同じピン留め状態なら、通知数で並び替え
-    if (a.unread > 0 && b.unread === 0) return -1;
-    if (a.unread === 0 && b.unread > 0) return 1;
-
-    // 通知数が多い順
-    return b.unread - a.unread;
+    return 0;
   });
 
   return (
@@ -406,75 +393,80 @@ export default function Sidebar({ onSelectChat, selectedChat, onCreateProject, b
           activeTab === "dm" ? (
             /* DM List */
             <div className="space-y-1">
-              {sortedFriends.map((friend) => {
-                const isPinned = pinnedDMs.includes(friend.id);
-                return (
-                  <button
-                    key={friend.id}
-                    onClick={() => onSelectChat("dm", friend.id, friend.name)}
-                    onContextMenu={(e) => handleContextMenu(e, "dm", friend.id)}
-                    className={`w-full flex items-center gap-3 px-2 py-2 rounded-md transition-colors ${
-                      selectedChat?.type === "dm" && selectedChat.id === friend.id
-                        ? "bg-slate-700"
-                        : "hover:bg-slate-800"
-                    }`}
-                  >
-                    <div className="relative">
-                      <div className="w-9 h-9 bg-slate-600 rounded flex items-center justify-center text-sm">
-                        {friend.avatar}
+              {sortedDmChats.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <p className="text-sm">DMがありません</p>
+                  <p className="text-xs mt-1">フレンドを追加するとここに表示されます</p>
+                </div>
+              ) : (
+                sortedDmChats.map((dm) => {
+                  const isPinned = pinnedDMs.includes(dm.id);
+                  const statusColor = dm.otherUser.status === "online" ? "bg-green-500" : dm.otherUser.status === "busy" ? "bg-red-500" : "bg-gray-400";
+                  return (
+                    <button
+                      key={dm.id}
+                      onClick={() => onSelectChat("dm", dm.id, dm.name)}
+                      onContextMenu={(e) => handleContextMenu(e, "dm", dm.id)}
+                      className={`w-full flex items-center gap-3 px-2 py-2 rounded-md transition-colors ${
+                        selectedChat?.type === "dm" && selectedChat.id === dm.id
+                          ? "bg-slate-700"
+                          : "hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="relative">
+                        <div className="w-9 h-9 bg-slate-600 rounded flex items-center justify-center text-sm">
+                          {dm.otherUser.avatar}
+                        </div>
+                        <div
+                          className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-slate-900 ${statusColor}`}
+                        />
                       </div>
-                      <div
-                        className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-slate-900 ${statusColors[friend.status]}`}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0 text-left">
-                      <div className="flex items-center gap-1">
-                        {isPinned && <span className="text-[10px] text-yellow-400">📌</span>}
-                        <span className="text-sm text-slate-200 block truncate">{friend.name}</span>
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="flex items-center gap-1">
+                          {isPinned && <span className="text-[10px] text-yellow-400">📌</span>}
+                          <span className="text-sm text-slate-200 block truncate">{dm.name}</span>
+                        </div>
                       </div>
-                    </div>
-                    {friend.unread > 0 && (
-                      <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                        {friend.unread}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                    </button>
+                  );
+                })
+              )}
             </div>
           ) : (
             /* Group List */
             <div className="space-y-1">
-              {sortedGroups.map((group) => {
-                const isPinned = pinnedGroups.includes(group.id);
-                return (
-                  <button
-                    key={group.id}
-                    onClick={() => onSelectChat("group", group.id, group.name)}
-                    onContextMenu={(e) => handleContextMenu(e, "group", group.id)}
-                    className={`w-full flex items-center gap-3 px-2 py-2 rounded-md transition-colors ${
-                      selectedChat?.type === "group" && selectedChat.id === group.id
-                        ? "bg-slate-700"
-                        : "hover:bg-slate-800"
-                    }`}
-                  >
-                    <div className="w-9 h-9 bg-green-700 rounded flex items-center justify-center text-lg">
-                      {group.icon}
-                    </div>
-                    <div className="flex-1 min-w-0 text-left">
-                      <div className="flex items-center gap-1">
-                        {isPinned && <span className="text-[10px] text-yellow-400">📌</span>}
-                        <span className="text-sm text-slate-200 block truncate">{group.name}</span>
+              {sortedGroupChats.length === 0 ? (
+                <div className="text-center py-8 text-slate-500">
+                  <p className="text-sm">グループがありません</p>
+                  <p className="text-xs mt-1">グループを作成するとここに表示されます</p>
+                </div>
+              ) : (
+                sortedGroupChats.map((group) => {
+                  const isPinned = pinnedGroups.includes(group.id);
+                  return (
+                    <button
+                      key={group.id}
+                      onClick={() => onSelectChat("group", group.id, group.name)}
+                      onContextMenu={(e) => handleContextMenu(e, "group", group.id)}
+                      className={`w-full flex items-center gap-3 px-2 py-2 rounded-md transition-colors ${
+                        selectedChat?.type === "group" && selectedChat.id === group.id
+                          ? "bg-slate-700"
+                          : "hover:bg-slate-800"
+                      }`}
+                    >
+                      <div className="w-9 h-9 bg-green-700 rounded flex items-center justify-center text-lg">
+                        {group.icon}
                       </div>
-                    </div>
-                    {group.unread > 0 && (
-                      <span className="bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
-                        {group.unread > 99 ? "99+" : group.unread}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                      <div className="flex-1 min-w-0 text-left">
+                        <div className="flex items-center gap-1">
+                          {isPinned && <span className="text-[10px] text-yellow-400">📌</span>}
+                          <span className="text-sm text-slate-200 block truncate">{group.name}</span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
             </div>
           )
         ) : activeSubTab === "tome" ? (

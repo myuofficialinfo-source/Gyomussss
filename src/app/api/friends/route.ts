@@ -91,14 +91,24 @@ export async function POST(request: Request) {
         `;
 
         // 双方向のフレンド関係を作成
+        const now = new Date().toISOString();
         await sql`
           INSERT INTO friends (user_id, friend_id, created_at)
-          VALUES (${friendRequest.from_user_id}, ${friendRequest.to_user_id}, ${new Date().toISOString()})
+          VALUES (${friendRequest.from_user_id}, ${friendRequest.to_user_id}, ${now})
           ON CONFLICT DO NOTHING
         `;
         await sql`
           INSERT INTO friends (user_id, friend_id, created_at)
-          VALUES (${friendRequest.to_user_id}, ${friendRequest.from_user_id}, ${new Date().toISOString()})
+          VALUES (${friendRequest.to_user_id}, ${friendRequest.from_user_id}, ${now})
+          ON CONFLICT DO NOTHING
+        `;
+
+        // DMチャットを自動作成（user1_idが小さい方を先に）
+        const [user1, user2] = [friendRequest.from_user_id, friendRequest.to_user_id].sort();
+        const dmChatId = `dm_${user1}_${user2}`;
+        await sql`
+          INSERT INTO dm_chats (id, user1_id, user2_id, created_at)
+          VALUES (${dmChatId}, ${user1}, ${user2}, ${now})
           ON CONFLICT DO NOTHING
         `;
 
@@ -109,6 +119,11 @@ export async function POST(request: Request) {
             toUserId: friendRequest.to_user_id,
             status: "accepted",
             createdAt: friendRequest.created_at,
+          },
+          dmChat: {
+            id: dmChatId,
+            user1Id: user1,
+            user2Id: user2,
           }
         });
       } else {

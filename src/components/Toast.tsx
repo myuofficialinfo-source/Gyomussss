@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, createContext, useContext, useCallback, ReactNode } from "react";
+import { useState, useEffect, createContext, useContext, useCallback, ReactNode, useRef } from "react";
 
-export type ToastType = "success" | "error" | "info" | "warning";
+export type ToastType = "success" | "error" | "info" | "warning" | "message";
 
 type Toast = {
   id: string;
@@ -10,6 +10,7 @@ type Toast = {
   title: string;
   message?: string;
   duration?: number;
+  sound?: boolean;
 };
 
 type ToastContextType = {
@@ -25,6 +26,57 @@ export function useToast() {
     throw new Error("useToast must be used within ToastProvider");
   }
   return context;
+}
+
+// 通知音を生成（Windows風）
+function playNotificationSound(type: ToastType) {
+  try {
+    const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // タイプに応じて異なる音
+    switch (type) {
+      case "success":
+        // 成功: 上昇音
+        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.2);
+        break;
+      case "error":
+        // エラー: 低い音2回
+        oscillator.frequency.setValueAtTime(200, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.15);
+        break;
+      case "message":
+        // メッセージ: Discord風の音
+        oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // A4
+        oscillator.frequency.setValueAtTime(554.37, audioContext.currentTime + 0.08); // C#5
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.15);
+        break;
+      default:
+        // info/warning: 通常の通知音
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.1);
+    }
+  } catch (e) {
+    console.log("Audio not supported:", e);
+  }
 }
 
 function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) {
@@ -50,6 +102,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
     error: "✕",
     info: "ℹ",
     warning: "⚠",
+    message: "💬",
   };
 
   const colors = {
@@ -57,6 +110,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
     error: "bg-red-500",
     info: "bg-blue-500",
     warning: "bg-yellow-500",
+    message: "bg-purple-500",
   };
 
   const bgColors = {
@@ -64,6 +118,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
     error: "bg-red-50 border-red-200",
     info: "bg-blue-50 border-blue-200",
     warning: "bg-yellow-50 border-yellow-200",
+    message: "bg-purple-50 border-purple-200",
   };
 
   return (
@@ -102,10 +157,29 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: () => void }) 
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const hasInteracted = useRef(false);
+
+  // ユーザーインタラクション検知（音を鳴らすため）
+  useEffect(() => {
+    const handleInteraction = () => {
+      hasInteracted.current = true;
+    };
+    window.addEventListener("click", handleInteraction, { once: true });
+    window.addEventListener("keydown", handleInteraction, { once: true });
+    return () => {
+      window.removeEventListener("click", handleInteraction);
+      window.removeEventListener("keydown", handleInteraction);
+    };
+  }, []);
 
   const showToast = useCallback((toast: Omit<Toast, "id">) => {
     const id = `toast_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     setToasts((prev) => [...prev, { ...toast, id }]);
+
+    // 音を鳴らす（sound: falseでない限り）
+    if (toast.sound !== false && hasInteracted.current) {
+      playNotificationSound(toast.type);
+    }
   }, []);
 
   const removeToast = useCallback((id: string) => {
