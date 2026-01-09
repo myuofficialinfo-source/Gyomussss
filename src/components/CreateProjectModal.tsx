@@ -148,6 +148,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, currentU
 
   const handleSendFriendRequest = async (toUserId: string) => {
     try {
+      console.log("Sending friend request:", { fromUserId: currentUserId, toUserId });
       const res = await fetch("/api/friends", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -158,11 +159,16 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, currentU
         }),
       });
       const data = await res.json();
+      console.log("Friend request response:", data);
       if (data.request) {
         setPendingRequests([...pendingRequests, toUserId]);
+        alert("フレンド申請を送信しました");
+      } else if (data.error) {
+        alert(`エラー: ${data.error}`);
       }
     } catch (error) {
       console.error("Failed to send friend request:", error);
+      alert("フレンド申請の送信に失敗しました");
     }
   };
 

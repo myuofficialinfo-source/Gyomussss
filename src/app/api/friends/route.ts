@@ -17,6 +17,17 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Cannot send request to yourself" }, { status: 400 });
       }
 
+      // 両方のユーザーが存在するか確認
+      const fromUserCheck = await sql`SELECT id FROM users WHERE id = ${fromUserId}`;
+      const toUserCheck = await sql`SELECT id FROM users WHERE id = ${toUserId}`;
+
+      if (fromUserCheck.rows.length === 0) {
+        return NextResponse.json({ error: `送信元ユーザーが見つかりません: ${fromUserId}` }, { status: 404 });
+      }
+      if (toUserCheck.rows.length === 0) {
+        return NextResponse.json({ error: `送信先ユーザーが見つかりません: ${toUserId}` }, { status: 404 });
+      }
+
       // 既にフレンドか確認
       const friendCheck = await sql`
         SELECT * FROM friends
